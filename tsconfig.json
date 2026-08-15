@@ -11,6 +11,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Node's native type stripping requires explicit .ts extensions on
+    // relative imports in the standalone scripts/ probes. Safe here because
+    // noEmit is set — nothing is compiled through tsc.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

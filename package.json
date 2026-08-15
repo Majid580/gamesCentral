@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smileone:probe": "node --env-file=.env.local scripts/smileone-sandbox-check.mts"
   },
   "dependencies": {
     "mongoose": "^9.9.2",

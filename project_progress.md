@@ -5,6 +5,70 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Phase 2 (partial): SmileOne signing verified, sandbox host unreachable
+
+**Built**
+
+- `lib/services/smileone/sign.ts` — the double-MD5 signature, `time` +
+  `sign` attachment, and form encoding. Deliberately free of `server-only`
+  and env access so the probe script can exercise the *real* signing code
+  rather than a copy of it.
+- `lib/services/smileone/client.ts` — `server-only`. Signed POST helper with
+  a 12s timeout, plus `fetchProductList` and `getRole`. Returns narrowed
+  types; no raw upstream payload ever reaches a caller (Section 12.14).
+- `scripts/smileone-sandbox-check.mts` — read-only sandbox probe
+  (`npm run smileone:probe`). Calls productlist and getrole only; it
+  deliberately does **not** call `createorder`, which would spend sandbox
+  balance and create an order.
+- `.env.local` (gitignored, verified via `git check-ignore`) holding the
+  sandbox credentials for local testing.
+
+**Verified**
+
+- Signing self-check passes: sorted-key independence (key insertion order
+  does not change the digest), 32-char hex output, and it throws if a `sign`
+  is already present in the params (which would sign a signature).
+
+**BLOCKER — the documented sandbox host does not exist**
+
+`https://frontsmie.smile.one` has **no DNS record.** Checked on 2026-08-15:
+
+| Host | Result |
+|---|---|
+| `frontsmie.smile.one` | NO DNS RECORD |
+| `sandbox.smile.one` | NO DNS RECORD |
+| `test.smile.one` | NO DNS RECORD |
+| `api.smile.one` | NO DNS RECORD |
+| `dev.smile.one` | NO DNS RECORD |
+| `www.smile.one` | resolves (Cloudflare) |
+| `smile.one` | resolves |
+
+General outbound networking is fine — `registry.npmjs.org` returned 200 — so
+this is not a local network or firewall problem. The sandbox hostname in the
+brief is either wrong or has been decommissioned.
+
+**Consequence:** the request side is done and the signing is verified, but the
+**response schemas in `client.ts` are unconfirmed**. They are written
+defensively — they accept the documented fields, tolerate the two plausible
+envelope shapes (`{data:{product:[…]}}` vs `{product:[…]}`), and log the actual
+top-level shape on a mismatch rather than throwing something opaque. They must
+be tightened against a real response before Phase 3 depends on them.
+
+Deliberately **not** worked around by pointing the probe at production
+`www.smile.one` — that is a live third-party system and the sandbox
+credentials are marked "never use in production".
+
+**Needed from the owner:** the correct sandbox base URL from
+`mlbb_API_Documentation.pdf` (authoritative per the brief) or from the
+SmileOne account manager.
+
+**Next**
+
+- Unblock the sandbox URL, re-run `npm run smileone:probe`, tighten the
+  response schemas, then build the Product model + sync (needs `DATABASE_URL`).
+
+---
+
 ## 2026-08-15 — Phase 1: static shell, design system, legal pages
 
 **Built**

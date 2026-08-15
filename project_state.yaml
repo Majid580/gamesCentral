@@ -48,6 +48,19 @@ known_issues:
   - "Legal pages are substantive drafts carrying visible 'Draft — needs owner review' banners and inline TODO(owner) markers. Section 21 gates go-live on these being resolved."
 
 blockers:
+  - |
+    SMILEONE SANDBOX HOST DOES NOT EXIST. The base URL given in the brief,
+    https://frontsmie.smile.one, has NO DNS record. Verified 2026-08-15:
+    frontsmie / sandbox / test / api / dev .smile.one all return
+    "DNS name does not exist", while www.smile.one and smile.one resolve
+    normally and general outbound network access is confirmed working
+    (registry.npmjs.org returned 200). So this is not a local network problem —
+    the sandbox hostname is wrong or decommissioned.
+    ACTION: owner must confirm the correct sandbox base URL from
+    mlbb_API_Documentation.pdf (authoritative per the brief) or from their
+    SmileOne account manager. Until then, productlist/getrole cannot be
+    verified live and the response schemas in lib/services/smileone/client.ts
+    remain unconfirmed guesses.
   - "DATABASE_URL: real MongoDB Atlas connection string not yet provided by owner."
   - "PayFast: no merchant sandbox credentials yet, and hosted-checkout field-level docs still needed from the PayFast dashboard/account manager. Phase 5 cannot start without both."
   - "Hostinger plan type (VPS vs Node.js shared hosting) unknown — determines the Phase 11 deploy method. Not blocking until Phase 11."
@@ -55,9 +68,11 @@ blockers:
 
 external_integrations:
   smileone:
-    status: "not-started"
-    env: "sandbox credentials available in brief, untested"
-    last_tested: null
+    status: "blocked-sandbox-host-unreachable"
+    signing: "implemented and self-verified (sorted-key independence, 32-char hex digest, rejects pre-set sign)"
+    request_side: "implemented"
+    response_side: "UNCONFIRMED — schemas are defensive guesses until a live sandbox responds"
+    last_tested: "2026-08-15 (signing only; network calls failed at DNS)"
   payfast:
     status: "blocked-on-credentials"
     last_tested: null
