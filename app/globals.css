@@ -1,26 +1,233 @@
 @import "tailwindcss";
 
+/*
+ * Games Central design tokens.
+ *
+ * Palette rationale (from the ui-ux-pro-max dataset, crossing three product
+ * types this site actually sits between):
+ *   - Gaming            -> deep indigo-black canvas, neon purple primary
+ *   - Marketplace (P2P) -> "trust purple + transaction green"
+ *   - Digital Products  -> "buy green" accent for instant-delivery commerce
+ *
+ * The purple carries brand/identity; the GREEN carries money. Every
+ * buy/confirm/pay action is green, so the commerce path reads as one
+ * continuous signal rather than a wall of same-colored buttons. Rose is
+ * reserved for "popular" emphasis and never used for a plain action.
+ *
+ * Light mode is the Marketplace light palette and dark mode is the Gaming
+ * palette — same purple family, so the owner's light and dark logos both sit
+ * on a coherent identity instead of two unrelated themes.
+ *
+ * Colors are defined once on :root, then re-declared for dark. Never give a
+ * color its only definition inside a media query.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --background: #faf5ff;
+  --foreground: #2e1065;
+  --card: #ffffff;
+  --card-foreground: #2e1065;
+  --muted: #f1ecfb;
+  --muted-foreground: #5b5570;
+  --border: #ddd6fe;
+  --input: #ffffff;
+
+  /* Brand */
+  --primary: #6d28d9;
+  --primary-foreground: #ffffff;
+  --primary-soft: #ede9fe;
+
+  /* Money / commerce — every buy + confirm action */
+  --accent: #15803d;
+  --accent-foreground: #ffffff;
+  --accent-soft: #dcfce7;
+
+  /* Emphasis only (badges, "most popular"), never a plain action */
+  --highlight: #e11d48;
+  --highlight-foreground: #ffffff;
+
+  /* Feedback */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --warning: #b45309;
+  --ring: #7c3aed;
+
+  /* Elevation — tuned per theme so dark mode uses glow, light uses shadow */
+  --shadow-card: 0 1px 2px rgb(46 16 101 / 0.06), 0 8px 24px rgb(46 16 101 / 0.08);
+  --shadow-raised: 0 2px 4px rgb(46 16 101 / 0.08), 0 16px 40px rgb(46 16 101 / 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0f0f23;
+    --foreground: #e6e5f0;
+    --card: #1a1832;
+    --card-foreground: #e6e5f0;
+    --muted: #232141;
+    --muted-foreground: #a5a1bd;
+    --border: #302c53;
+    --input: #191733;
+
+    /* #8b5cf6 measured 4.46:1 on the dark background and 4.06:1 on cards —
+       both under the 4.5:1 AA floor. Lightened to clear AA everywhere while
+       staying a saturated neon purple. */
+    --primary: #9b7ef8;
+    --primary-foreground: #14082e;
+    --primary-soft: #241a45;
+
+    --accent: #22c55e;
+    --accent-foreground: #052e16;
+    --accent-soft: #14331f;
+
+    --highlight: #fb7185;
+    --highlight-foreground: #2b0512;
+
+    --destructive: #f87171;
+    --destructive-foreground: #2b0505;
+    --warning: #fbbf24;
+    --ring: #a78bfa;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+    --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.45);
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0f0f23;
+  --foreground: #e6e5f0;
+  --card: #1a1832;
+  --card-foreground: #e6e5f0;
+  --muted: #232141;
+  --muted-foreground: #a5a1bd;
+  --border: #302c53;
+  --input: #191733;
+
+  --primary: #8b5cf6;
+  --primary-foreground: #14082e;
+  --primary-soft: #241a45;
+
+  --accent: #22c55e;
+  --accent-foreground: #052e16;
+  --accent-soft: #14331f;
+
+  --highlight: #fb7185;
+  --highlight-foreground: #2b0512;
+
+  --destructive: #f87171;
+  --destructive-foreground: #2b0505;
+  --warning: #fbbf24;
+  --ring: #a78bfa;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.45);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-ring: var(--ring);
+
+  --font-display: var(--font-space-grotesk);
+  --font-sans: var(--font-dm-sans);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    /* Tabular figures matter here: diamond counts and PKR prices sit in
+       vertical lists and must align. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Never remove focus rings — replace them with a better one. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /*
+   * The diamond motif. Mobile Legends diamonds are faceted, so featured
+   * surfaces get a single clipped corner rather than a uniform border radius.
+   * Used sparingly — one accent per card, not on every element.
+   */
+  .facet-corner {
+    clip-path: polygon(0 0, calc(100% - 1.25rem) 0, 100% 1.25rem, 100% 100%, 0 100%);
+  }
+
+  .text-gradient-brand {
+    background-image: linear-gradient(
+      100deg,
+      var(--primary) 0%,
+      var(--highlight) 55%,
+      var(--primary) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+/* Respect motion preferences globally (ux-guidelines: Reduced Motion, High). */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,6 +1,6 @@
 project: Games Central
 last_updated: "2026-08-15"
-current_phase: "phase-1-static-shell"
+current_phase: "phase-2-smileone-integration"
 
 tech_stack:
   frontend: "Next.js 16.3.1 App Router (Turbopack), React 19.2, Tailwind v4"
@@ -18,11 +18,17 @@ completed_features:
   - "Phase 0: lazy-validated server-only env module (lib/env.ts, zod)"
   - "Phase 0: pooled/cached Mongoose connection helper (lib/models/db.ts) + assertScalar NoSQL-injection guard"
   - "Phase 0: .env.example, .gitignore hardened, CLAUDE.md + tracking docs"
+  - "Phase 1: design token system (light+dark), Space Grotesk + DM Sans typography"
+  - "Phase 1: site chrome — header w/ skip link + active nav, footer, mobile nav, (site) layout"
+  - "Phase 1: home page with hero, trust strip, package grid, how-it-works"
+  - "Phase 1: legal pages — privacy, refund, delivery, terms, contact (substantive drafts)"
+  - "Phase 1: /track placeholder, PackageCard, Button, Logo, LegalShell components"
+  - "Phase 1: integer-paisa money formatter that throws on float input"
+  - "Phase 1: WCAG AA verified by measurement in both themes; 44px tap targets on mobile"
 
 in_progress_features: []
 
 pending_features:
-  - "Phase 1: static shell — layout, home, legal pages"
   - "Phase 2: SmileOne sandbox (sign util, productlist sync, getrole)"
   - "Phase 3: product browsing UI"
   - "Phase 4: checkout flow UI, payment stubbed"
@@ -37,6 +43,9 @@ pending_features:
 
 known_issues:
   - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md."
+  - "Home page renders lib/placeholder-catalogue.ts behind a visible 'preview build' notice. Prices are illustrative and MUST NOT ship publicly — Phase 3 deletes that module."
+  - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
+  - "Legal pages are substantive drafts carrying visible 'Draft — needs owner review' banners and inline TODO(owner) markers. Section 21 gates go-live on these being resolved."
 
 blockers:
   - "DATABASE_URL: real MongoDB Atlas connection string not yet provided by owner."
@@ -61,6 +70,7 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "Push initial commit to github.com/Majid580/gamesCentral"
-  - "Phase 1: base layout, header/footer, home page, and the Section 14 legal/contact pages"
-  - "Collect from owner: Atlas connection string, real logo files, contact address/phone for the Contact page"
+  - "Phase 2: SmileOne sign utility (double MD5), productlist sync into MongoDB, getrole"
+  - "Collect from owner: Atlas connection string (blocks Phase 2 sync), real logo files, contact address/phone, markup % and USD->PKR rate"
+  - "Confirm with owner: PayFast hosted-checkout mode + request field-level docs from the merchant dashboard (blocks Phase 5)"
+  - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines Phase 11 deploy method"

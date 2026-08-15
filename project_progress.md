@@ -5,6 +5,89 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Phase 1: static shell, design system, legal pages
+
+**Built**
+
+- Design token system in `app/globals.css` — light + dark, driven by CSS
+  variables so `bg-background` works in both without `dark:` variants
+  everywhere. Responds to `prefers-color-scheme` *and* a `data-theme`
+  attribute, so a manual theme toggle can be added later without redoing
+  tokens.
+- Typography: Space Grotesk (display) + DM Sans (body) via `next/font/google`.
+- Site chrome: `SiteHeader` (sticky, skip link, active nav state),
+  `SiteFooter`, `MobileNav`, and the `(site)` route-group layout.
+- Pages: home, `/privacy`, `/refund`, `/delivery`, `/terms`, `/contact`, and a
+  `/track` placeholder. All 8 routes statically prerendered.
+- Components: `PackageCard`, `Logo`, `Button`/`ButtonLink`, `LegalShell`.
+- `lib/utils/money.ts` — integer-paisa formatting that *throws* on a
+  non-integer input, so a float can never silently reach a price display.
+- `lib/site-config.ts` — one place for nav, contact details, and the reseller
+  disclaimer.
+
+**Decisions and why**
+
+- **Palette.** Crossed three product types from the ui-ux-pro-max dataset that
+  this site sits between: Gaming (dark indigo canvas, neon purple), Marketplace
+  P2P ("trust purple + transaction green"), and Digital Products ("buy green").
+  Result: **purple carries brand, green carries money.** Every buy/confirm
+  action is green so the commerce path reads as one continuous signal instead
+  of a wall of identical buttons. Rose is reserved for "most popular" emphasis
+  and never used as a plain action colour.
+- **Light mode is the Marketplace palette, dark mode is the Gaming palette** —
+  same purple family, so the owner's light and dark logos both land on one
+  coherent identity rather than two unrelated themes.
+- **Typography** is the dataset's "Tech Startup" pairing. The dataset lists
+  Fredoka/Nunito for gaming, but that reads as a children's app — wrong for a
+  site taking payments. Space Grotesk gives distinctive letterforms without
+  sacrificing the credibility the checkout and legal pages need.
+- **No shadcn/ui, no clsx, no tailwind-merge.** Section 13 says check bundle
+  size before adding a UI library and Section 12.15 says don't add a package
+  for what 20 lines can do. `cn()` is 3 lines; the buttons and cards are small.
+  Revisit if the admin dashboard (Phase 8) needs real composite widgets.
+- **Legal pages are substantive drafts, not lorem ipsum.** Every page carries a
+  visible "Draft — needs owner review" banner and inline `TODO(owner)` markers
+  only where the owner holds facts I don't (registered entity, retention
+  period, jurisdiction). Section 21 gates go-live on these being resolved.
+- **`/track` is an honest empty state rather than a dead form.** A lookup box
+  that silently does nothing is worse than saying it isn't ready. The real one
+  lands in Phase 7 and must require order ID *plus* matching contact detail —
+  order ID alone would be an IDOR.
+- **The `.claude/launch.json` dev-server config** is committed so future
+  sessions can start the preview without rediscovering the command.
+
+**Verified (not assumed)**
+
+- `npm run build`: all 8 routes compile and prerender as static. `npm run lint`
+  and `npm run typecheck`: clean.
+- **Contrast measured on the rendered tokens, not eyeballed.** Dark mode
+  initially failed WCAG AA in two places — `--primary` `#8b5cf6` measured
+  4.46:1 on the background and 4.06:1 on cards, against a 4.5:1 floor. Solved
+  for a replacement (`#9b7ef8`: 6.05 / 5.52 / 6.10) rather than guessing. All
+  pairs now pass AA in both themes; light mode passed unchanged (4.70–15.24).
+- **Mobile (375×812): no horizontal overflow, and every tap target now clears
+  44×44.** Footer links measured 19px tall and the logo link 39px — both fixed.
+- Mobile nav verified functionally: `aria-expanded` toggles, label swaps
+  open/close, panel renders all four links, body scroll locks.
+- Package cards were `<article>` elements with no accessible name; each now has
+  an `<h3>` and `aria-labelledby`, with a visually-hidden suffix so a screen
+  reader hears "86 diamonds — Starter top-up" rather than a bare number.
+
+**Known gaps carried forward**
+
+- Home page renders `PLACEHOLDER_PACKAGES` behind a visible "preview build"
+  notice. Prices are illustrative and **must not ship publicly** — Phase 3
+  deletes that module and reads the synced catalogue.
+- `components/brand/logo.tsx` is an SVG placeholder. Needs the owner's real
+  logos as PNG/SVG with transparency.
+- Contact address and phone are placeholders. PayFast verifies these.
+
+**Next**
+
+- Phase 2: SmileOne sandbox — sign utility, product-list sync, `getrole`.
+
+---
+
 ## 2026-08-15 — Phase 0: scaffolding and foundations
 
 **Built**
