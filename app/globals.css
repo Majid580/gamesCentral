@@ -11,18 +11,22 @@
  *
  * The purple carries brand/identity; the GREEN carries money. Every
  * buy/confirm/pay action is green, so the commerce path reads as one
- * continuous signal rather than a wall of same-colored buttons. Rose is
- * reserved for "popular" emphasis and never used for a plain action.
+ * continuous signal rather than a wall of same-colored buttons.
+ *
+ * DISPERSION RAMP (--spectrum-1..4). A cut diamond splits white light into a
+ * spectrum, and diamonds are literally the product. So decorative colour is
+ * not arbitrary: it walks the cool half of the visible spectrum, cyan ->
+ * indigo -> fuchsia -> rose. Green is deliberately excluded from the ramp so
+ * that seeing green anywhere still means "money", never "decoration".
  *
  * Light mode is the Marketplace light palette and dark mode is the Gaming
  * palette — same purple family, so the owner's light and dark logos both sit
  * on a coherent identity instead of two unrelated themes.
- *
- * Colors are defined once on :root, then re-declared for dark. Never give a
- * color its only definition inside a media query.
  */
 
 :root {
+  color-scheme: light;
+
   /* Surfaces */
   --background: #faf5ff;
   --foreground: #2e1065;
@@ -53,74 +57,177 @@
   --warning: #b45309;
   --ring: #7c3aed;
 
-  /* Elevation — tuned per theme so dark mode uses glow, light uses shadow */
+  /*
+   * The dispersion ramp. Decorative only — never the sole carrier of meaning.
+   *
+   * These stops also run as TEXT (section eyebrows, step numbers), so each is
+   * measured against every surface it can land on, including its own 14% tint
+   * chip. #0e7490 measured 4.23:1 and #e11d48 measured 3.61:1 as a number on
+   * that chip — both under AA — and were darkened to the brightest value that
+   * clears 4.5:1 everywhere rather than to a guessed one.
+   */
+  --spectrum-1: #0d6d87;
+  --spectrum-2: #4f46e5;
+  --spectrum-3: #a21caf;
+  --spectrum-4: #bf193d;
+
+  /* Elevation — light mode uses tinted shadow, dark mode uses glow. */
   --shadow-card: 0 1px 2px rgb(46 16 101 / 0.06), 0 8px 24px rgb(46 16 101 / 0.08);
-  --shadow-raised: 0 2px 4px rgb(46 16 101 / 0.08), 0 16px 40px rgb(46 16 101 / 0.12);
+  --shadow-raised: 0 2px 4px rgb(46 16 101 / 0.08), 0 16px 40px rgb(46 16 101 / 0.14);
+
+  /* Strength of the coloured hover glow on interactive surfaces. */
+  --glow-alpha: 26%;
+  --glow-spread: 0 18px 44px -12px;
+
+  /* Hairline that catches the light along the top edge of a card — the facet. */
+  --facet-alpha: 55%;
+
+  /*
+   * Ambient wash behind every page. Fixed, so scrolling moves content across
+   * a stable field of light instead of dragging the gradient with it.
+   */
+  --mesh:
+    radial-gradient(58rem 32rem at 12% -8%, color-mix(in oklab, var(--spectrum-2) 12%, transparent), transparent 62%),
+    radial-gradient(48rem 30rem at 96% 4%, color-mix(in oklab, var(--spectrum-3) 9%, transparent), transparent 60%),
+    radial-gradient(52rem 34rem at 50% 108%, color-mix(in oklab, var(--spectrum-1) 8%, transparent), transparent 62%);
 }
 
+/*
+ * Dark palette values are declared EXACTLY ONCE here and mapped onto the live
+ * tokens by the two blocks below. An earlier revision kept two literal copies
+ * and they silently drifted — the manual-dark copy still carried a --primary
+ * that measured 4.46:1 and failed AA. Indirection makes that class of bug
+ * impossible: there is only one place a dark value can be written.
+ */
+:root {
+  --dark-background: #0f0f23;
+  --dark-foreground: #e6e5f0;
+  --dark-card: #1a1832;
+  --dark-card-foreground: #e6e5f0;
+  --dark-muted: #232141;
+  --dark-muted-foreground: #a5a1bd;
+  --dark-border: #302c53;
+  --dark-input: #191733;
+
+  /* #8b5cf6 measured 4.46:1 on the dark background and 4.06:1 on cards — both
+     under the 4.5:1 AA floor. #9b7ef8 measures 6.05 / 5.52 / 6.10. */
+  --dark-primary: #9b7ef8;
+  --dark-primary-foreground: #14082e;
+  --dark-primary-soft: #241a45;
+
+  --dark-accent: #22c55e;
+  --dark-accent-foreground: #052e16;
+  --dark-accent-soft: #14331f;
+
+  --dark-highlight: #fb7185;
+  --dark-highlight-foreground: #2b0512;
+
+  --dark-destructive: #f87171;
+  --dark-destructive-foreground: #2b0505;
+  --dark-warning: #fbbf24;
+  --dark-ring: #a78bfa;
+
+  --dark-spectrum-1: #22d3ee;
+  --dark-spectrum-2: #818cf8;
+  --dark-spectrum-3: #e879f9;
+  --dark-spectrum-4: #fb7185;
+
+  --dark-shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  --dark-shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.45);
+
+  --dark-mesh:
+    radial-gradient(58rem 32rem at 12% -8%, color-mix(in oklab, var(--spectrum-2) 20%, transparent), transparent 62%),
+    radial-gradient(48rem 30rem at 96% 4%, color-mix(in oklab, var(--spectrum-3) 14%, transparent), transparent 60%),
+    radial-gradient(52rem 34rem at 50% 108%, color-mix(in oklab, var(--spectrum-1) 12%, transparent), transparent 62%);
+}
+
+/*
+ * Two paths into dark: the OS preference (unless the visitor has pinned
+ * light), and an explicit [data-theme="dark"] set by the header toggle.
+ * Identical bodies by construction — both only reference --dark-*.
+ */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #0f0f23;
-    --foreground: #e6e5f0;
-    --card: #1a1832;
-    --card-foreground: #e6e5f0;
-    --muted: #232141;
-    --muted-foreground: #a5a1bd;
-    --border: #302c53;
-    --input: #191733;
+    color-scheme: dark;
 
-    /* #8b5cf6 measured 4.46:1 on the dark background and 4.06:1 on cards —
-       both under the 4.5:1 AA floor. Lightened to clear AA everywhere while
-       staying a saturated neon purple. */
-    --primary: #9b7ef8;
-    --primary-foreground: #14082e;
-    --primary-soft: #241a45;
+    --background: var(--dark-background);
+    --foreground: var(--dark-foreground);
+    --card: var(--dark-card);
+    --card-foreground: var(--dark-card-foreground);
+    --muted: var(--dark-muted);
+    --muted-foreground: var(--dark-muted-foreground);
+    --border: var(--dark-border);
+    --input: var(--dark-input);
 
-    --accent: #22c55e;
-    --accent-foreground: #052e16;
-    --accent-soft: #14331f;
+    --primary: var(--dark-primary);
+    --primary-foreground: var(--dark-primary-foreground);
+    --primary-soft: var(--dark-primary-soft);
 
-    --highlight: #fb7185;
-    --highlight-foreground: #2b0512;
+    --accent: var(--dark-accent);
+    --accent-foreground: var(--dark-accent-foreground);
+    --accent-soft: var(--dark-accent-soft);
 
-    --destructive: #f87171;
-    --destructive-foreground: #2b0505;
-    --warning: #fbbf24;
-    --ring: #a78bfa;
+    --highlight: var(--dark-highlight);
+    --highlight-foreground: var(--dark-highlight-foreground);
 
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
-    --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.45);
+    --destructive: var(--dark-destructive);
+    --destructive-foreground: var(--dark-destructive-foreground);
+    --warning: var(--dark-warning);
+    --ring: var(--dark-ring);
+
+    --spectrum-1: var(--dark-spectrum-1);
+    --spectrum-2: var(--dark-spectrum-2);
+    --spectrum-3: var(--dark-spectrum-3);
+    --spectrum-4: var(--dark-spectrum-4);
+
+    --shadow-card: var(--dark-shadow-card);
+    --shadow-raised: var(--dark-shadow-raised);
+
+    --glow-alpha: 42%;
+    --facet-alpha: 70%;
+    --mesh: var(--dark-mesh);
   }
 }
 
 :root[data-theme="dark"] {
-  --background: #0f0f23;
-  --foreground: #e6e5f0;
-  --card: #1a1832;
-  --card-foreground: #e6e5f0;
-  --muted: #232141;
-  --muted-foreground: #a5a1bd;
-  --border: #302c53;
-  --input: #191733;
+  color-scheme: dark;
 
-  --primary: #8b5cf6;
-  --primary-foreground: #14082e;
-  --primary-soft: #241a45;
+  --background: var(--dark-background);
+  --foreground: var(--dark-foreground);
+  --card: var(--dark-card);
+  --card-foreground: var(--dark-card-foreground);
+  --muted: var(--dark-muted);
+  --muted-foreground: var(--dark-muted-foreground);
+  --border: var(--dark-border);
+  --input: var(--dark-input);
 
-  --accent: #22c55e;
-  --accent-foreground: #052e16;
-  --accent-soft: #14331f;
+  --primary: var(--dark-primary);
+  --primary-foreground: var(--dark-primary-foreground);
+  --primary-soft: var(--dark-primary-soft);
 
-  --highlight: #fb7185;
-  --highlight-foreground: #2b0512;
+  --accent: var(--dark-accent);
+  --accent-foreground: var(--dark-accent-foreground);
+  --accent-soft: var(--dark-accent-soft);
 
-  --destructive: #f87171;
-  --destructive-foreground: #2b0505;
-  --warning: #fbbf24;
-  --ring: #a78bfa;
+  --highlight: var(--dark-highlight);
+  --highlight-foreground: var(--dark-highlight-foreground);
 
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
-  --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.45);
+  --destructive: var(--dark-destructive);
+  --destructive-foreground: var(--dark-destructive-foreground);
+  --warning: var(--dark-warning);
+  --ring: var(--dark-ring);
+
+  --spectrum-1: var(--dark-spectrum-1);
+  --spectrum-2: var(--dark-spectrum-2);
+  --spectrum-3: var(--dark-spectrum-3);
+  --spectrum-4: var(--dark-spectrum-4);
+
+  --shadow-card: var(--dark-shadow-card);
+  --shadow-raised: var(--dark-shadow-raised);
+
+  --glow-alpha: 42%;
+  --facet-alpha: 70%;
+  --mesh: var(--dark-mesh);
 }
 
 @theme inline {
@@ -149,6 +256,11 @@
   --color-warning: var(--warning);
   --color-ring: var(--ring);
 
+  --color-spectrum-1: var(--spectrum-1);
+  --color-spectrum-2: var(--spectrum-2);
+  --color-spectrum-3: var(--spectrum-3);
+  --color-spectrum-4: var(--spectrum-4);
+
   --font-display: var(--font-space-grotesk);
   --font-sans: var(--font-dm-sans);
 
@@ -166,6 +278,9 @@
 
   body {
     background-color: var(--background);
+    background-image: var(--mesh);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
     color: var(--foreground);
     font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -193,6 +308,108 @@
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Motion                                                              */
+/*                                                                     */
+/* Everything here animates transform/opacity/background-position only, */
+/* so it stays on the compositor thread. Nothing animates width,       */
+/* height, or layout position.                                         */
+/* ------------------------------------------------------------------ */
+
+@keyframes gc-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The gradient walking across the headline: light moving over a gem face. */
+@keyframes gc-disperse {
+  to {
+    background-position: 200% center;
+  }
+}
+
+/* The hero gem's slow drift. 22s so it reads as ambient, not as an event. */
+@keyframes gc-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) rotate(2deg);
+  }
+}
+
+@keyframes gc-halo {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+}
+
+/* The live-status dot in the hero eyebrow. */
+@keyframes gc-ping {
+  75%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@layer components {
+  /*
+   * Button skeleton — layout, shape, and interaction states only. Colour comes
+   * from the variant utilities in components/ui/button.tsx.
+   *
+   * This lives in @layer components rather than in the class string because
+   * `cn()` is a plain join with no conflict resolution: a base utility and a
+   * caller's utility have identical specificity, so the one Tailwind happens
+   * to emit last wins. `hidden sm:inline-flex` on the header CTA silently lost
+   * to the base `inline-flex` and the button stayed visible on mobile, pushing
+   * the header 22px past the viewport. Tailwind's utilities layer outranks
+   * this one, so a caller's className now reliably wins.
+   */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition-property: filter, background-color, transform, box-shadow, border-color;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+
+  /* Gated on a real pointer. Tailwind's `hover:` variant does this for you;
+     hand-written CSS does not, and a sticky lift after a tap looks broken. */
+  @media (hover: hover) {
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+  }
+
+  .btn:active {
+    transform: translateY(1px);
+  }
+
+  .btn:disabled {
+    pointer-events: none;
+    opacity: 0.55;
+  }
+}
+
 @layer utilities {
   /*
    * The diamond motif. Mobile Legends diamonds are faceted, so featured
@@ -203,23 +420,235 @@
     clip-path: polygon(0 0, calc(100% - 1.25rem) 0, 100% 1.25rem, 100% 100%, 0 100%);
   }
 
+  /*
+   * The second half of the motif: a hairline along the top edge that catches
+   * the light, the way the table facet of a cut stone does. Colour comes from
+   * --facet-tone, which defaults to the brand purple but is overridden per
+   * card to walk the dispersion ramp.
+   */
+  .facet-edge {
+    position: relative;
+  }
+
+  .facet-edge::before {
+    content: "";
+    position: absolute;
+    inset-inline: 12%;
+    top: -1px;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--facet-tone, var(--primary)) var(--facet-alpha), transparent),
+      transparent
+    );
+  }
+
   .text-gradient-brand {
     background-image: linear-gradient(
       100deg,
-      var(--primary) 0%,
-      var(--highlight) 55%,
-      var(--primary) 100%
+      var(--spectrum-2) 0%,
+      var(--spectrum-3) 28%,
+      var(--spectrum-4) 48%,
+      var(--spectrum-2) 72%,
+      var(--spectrum-1) 100%
     );
+    background-size: 200% auto;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    animation: gc-disperse 9s linear infinite;
   }
+
+  /* Page-load entrance. Ends visible with or without JS. */
+  .enter {
+    animation: gc-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: calc(var(--enter-i, 0) * 90ms);
+  }
+
+  /*
+   * Coloured hover glow. --glow-tone decides the hue, so a package card glows
+   * in its own dispersion colour and a buy button glows money-green. Written
+   * as a class rather than a Tailwind arbitrary value because the box-shadow
+   * is a composed color-mix() and reads far better spelled out.
+   */
+  .glow-hover {
+    transition:
+      box-shadow 0.3s ease-out,
+      transform 0.2s ease-out,
+      border-color 0.2s ease-out,
+      filter 0.2s ease-out;
+  }
+
+  /* Pointer-gated: on touch these states stick after a tap. */
+  @media (hover: hover) {
+    .glow-hover:hover {
+      box-shadow: var(--glow-spread)
+        color-mix(in oklab, var(--glow-tone, var(--primary)) var(--glow-alpha), transparent);
+    }
+  }
+
+  /*
+   * A single band of light crossing a filled button on hover — the same
+   * gesture as light crossing a gem face, at button scale. Filled variants
+   * only; on an outline button a white sweep just looks like a glitch.
+   */
+  .sheen {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgb(255 255 255 / 0.24) 50%,
+      transparent 70%
+    );
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @media (hover: hover) {
+    .sheen:hover::after {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Keyboard users get the same feedback, on every device. */
+  .sheen:focus-visible::after {
+    transform: translateX(100%);
+  }
+
+  .drift {
+    animation: gc-drift 22s ease-in-out infinite;
+  }
+
+  .halo {
+    animation: gc-halo 7s ease-in-out infinite;
+  }
+
+  .ping {
+    animation: gc-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme toggle icon state                                             */
+/*                                                                     */
+/* Driven entirely by CSS so the correct icon is painted on the very    */
+/* first frame — before React hydrates — in all three cases: OS         */
+/* preference, pinned light, pinned dark. The button shows the theme    */
+/* you would switch TO, so it reads as an action, not a status light.   */
+/* ------------------------------------------------------------------ */
+
+/* Controls that only do something once JS runs should not be offered without
+   it. Same media feature that gates the scroll reveal below. */
+@media (scripting: none) {
+  .requires-js {
+    display: none;
+  }
+}
+
+.theme-icon {
+  /* Both icons stack in one grid cell so they can cross-fade in place. */
+  grid-area: 1 / 1;
+  transition:
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.25s ease-out;
+}
+
+.icon-sun {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+}
+
+.icon-moon {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .icon-sun {
+    opacity: 1;
+    transform: none;
+  }
+
+  :root:not([data-theme="light"]) .icon-moon {
+    opacity: 0;
+    transform: rotate(90deg) scale(0.6);
+  }
+}
+
+:root[data-theme="dark"] .icon-sun {
+  opacity: 1;
+  transform: none;
+}
+
+:root[data-theme="dark"] .icon-moon {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.6);
+}
+
+:root[data-theme="light"] .icon-sun {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+}
+
+:root[data-theme="light"] .icon-moon {
+  opacity: 1;
+  transform: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scroll reveal                                                       */
+/*                                                                     */
+/* The hidden state is gated on `scripting: enabled`, so with           */
+/* JavaScript off — or in a crawler that doesn't run it — nothing is    */
+/* ever hidden and the page reads normally. Using the media feature     */
+/* rather than a JS-applied class keeps <html> untouched, which is what */
+/* lets this coexist with hydration without a mismatch.                 */
+/* ------------------------------------------------------------------ */
+
+@media (scripting: enabled) {
+  [data-reveal] {
+    opacity: 0;
+    transform: translate3d(0, var(--reveal-y, 16px), 0);
+    will-change: opacity, transform;
+  }
+}
+
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+  transition:
+    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  /* Grid children carry --reveal-i so a row arrives as a wave rather than a
+     block. Capped at 8 steps in the markup: past that the tail feels laggy. */
+  transition-delay: calc(var(--reveal-i, 0) * 70ms);
 }
 
 /* Respect motion preferences globally (ux-guidelines: Reduced Motion, High). */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  /* Reveal targets must end VISIBLE, not merely un-transitioned — otherwise a
+     reduced-motion visitor whose observer hasn't fired sees nothing. This sits
+     after the scripting-gated rule at equal specificity, so it wins. */
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
   }
 
   *,

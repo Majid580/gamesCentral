@@ -29,7 +29,10 @@ export default function TrackOrderPage() {
         used at checkout.
       </p>
 
-      <div className="mt-10 rounded-2xl border border-border bg-card p-6 sm:p-8">
+      <div
+        data-reveal
+        className="facet-edge mt-10 rounded-2xl border border-border bg-card p-6 [--facet-tone:var(--spectrum-2)] sm:p-8"
+      >
         <h2 className="font-display text-lg font-semibold">
           Order tracking isn&apos;t live yet
         </h2>

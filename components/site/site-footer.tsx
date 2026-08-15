@@ -5,7 +5,7 @@ import { RESELLER_DISCLAIMER, siteConfig } from "@/lib/site-config";
 
 export function SiteFooter() {
   return (
-    <footer className="mt-auto border-t border-border bg-card/40">
+    <footer className="facet-edge mt-auto border-t border-border bg-card/40 [--facet-alpha:80%] [--facet-tone:var(--spectrum-3)] before:inset-x-[28%]">
       <div className="mx-auto max-w-6xl px-5 py-14">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">

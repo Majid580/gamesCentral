@@ -10,13 +10,17 @@ type Size = "sm" | "md" | "lg";
  * `buy` is the money variant (green). Reserve it for actions that move the
  * customer toward or through payment, so the commerce path reads as one
  * continuous signal. `primary` (purple) is for everything else.
+ *
+ * Filled variants carry `sheen` (a band of light on hover) and `glow-hover`
+ * tinted to their own colour, so the button lights up in the hue that already
+ * means something — green for money, purple for brand.
  */
 const variants: Record<Variant, string> = {
   primary:
-    "bg-primary text-primary-foreground hover:brightness-110 active:brightness-95 shadow-[var(--shadow-card)]",
-  buy: "bg-accent text-accent-foreground hover:brightness-110 active:brightness-95 shadow-[var(--shadow-card)]",
+    "sheen glow-hover [--glow-tone:var(--primary)] bg-primary text-primary-foreground hover:brightness-110 active:brightness-95 shadow-[var(--shadow-card)]",
+  buy: "sheen glow-hover [--glow-tone:var(--accent)] bg-accent text-accent-foreground hover:brightness-110 active:brightness-95 shadow-[var(--shadow-card)]",
   outline:
-    "border border-border bg-card text-card-foreground hover:bg-muted active:brightness-95",
+    "glow-hover [--glow-tone:var(--primary)] border border-border bg-card text-card-foreground hover:border-primary/45 hover:bg-muted active:brightness-95",
   ghost: "text-foreground hover:bg-muted active:brightness-95",
 };
 
@@ -27,11 +31,15 @@ const sizes: Record<Size, string> = {
   lg: "h-14 px-7 text-base",
 };
 
-const base =
-  "inline-flex items-center justify-center gap-2 rounded-xl font-medium " +
-  "transition-[filter,background-color,transform] duration-200 ease-out " +
-  "active:translate-y-px disabled:pointer-events-none disabled:opacity-55 " +
-  "whitespace-nowrap";
+/*
+ * Layout and shape live in the `.btn` component class (globals.css), not in
+ * utilities here. `cn()` is a plain join, so a base utility and a caller's
+ * utility tie on specificity and the winner depends on Tailwind's emit order —
+ * which is how `hidden sm:inline-flex` on the header CTA lost to a base
+ * `inline-flex`. Keeping the skeleton in @layer components means a caller's
+ * className always wins.
+ */
+const base = "btn";
 
 export function Button({
   variant = "primary",

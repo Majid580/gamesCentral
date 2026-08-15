@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils/cn";
 import { siteConfig } from "@/lib/site-config";
@@ -85,11 +85,11 @@ export function MobileNav() {
       {open && (
         <div
           id="mobile-nav-panel"
-          className="fixed inset-x-0 top-16 z-40 border-b border-border bg-card px-5 pb-6 pt-2 shadow-[var(--shadow-raised)]"
+          className="enter fixed inset-x-0 top-16 z-40 border-b border-border bg-card px-5 pb-6 pt-2 shadow-[var(--shadow-raised)]"
         >
           <nav aria-label="Mobile">
             <ul className="flex flex-col">
-              {siteConfig.nav.map((item) => {
+              {siteConfig.nav.map((item, i) => {
                 const base = item.href.split("#")[0];
                 const active =
                   base === "/" ? pathname === "/" : pathname.startsWith(base);
@@ -97,8 +97,9 @@ export function MobileNav() {
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      style={{ "--enter-i": i + 1 } as CSSProperties}
                       className={cn(
-                        "flex min-h-12 items-center border-b border-border/60 text-[0.9375rem] transition-colors duration-200",
+                        "enter flex min-h-12 items-center border-b border-border/60 text-[0.9375rem] transition-colors duration-200",
                         active
                           ? "font-medium text-primary"
                           : "text-muted-foreground hover:text-foreground",

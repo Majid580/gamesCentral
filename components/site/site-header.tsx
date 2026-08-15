@@ -3,11 +3,12 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { MobileNav } from "@/components/site/mobile-nav";
 import { NavLinks } from "@/components/site/nav-links";
+import { ThemeToggle } from "@/components/site/theme-toggle";
 import { ButtonLink } from "@/components/ui/button";
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/85 backdrop-blur-md">
+    <header className="facet-edge sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl [--facet-tone:var(--spectrum-2)] before:top-auto before:bottom-[-1px] before:inset-x-[20%]">
       {/* Skip link — first focusable element on the page. */}
       <a
         href="#main"
@@ -27,7 +28,8 @@ export function SiteHeader() {
 
         <NavLinks />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <ThemeToggle />
           <ButtonLink href="/#packages" variant="buy" size="sm" className="hidden sm:inline-flex">
             Top up now
           </ButtonLink>

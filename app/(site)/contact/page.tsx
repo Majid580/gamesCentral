@@ -42,7 +42,10 @@ export default function ContactPage() {
         .
       </p>
 
-      <dl className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2">
+      <dl
+        data-reveal
+        className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2"
+      >
         <ContactItem label="Registered office">
           <address className="not-italic leading-relaxed">
             {siteConfig.contact.addressLines.map((line) => (

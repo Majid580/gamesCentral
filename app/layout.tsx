@@ -46,12 +46,49 @@ export const viewport: Viewport = {
   ],
 };
 
+/*
+ * Applies a pinned theme before first paint. Doing this after hydration would
+ * flash the wrong theme on every page load, which on a payments site reads as
+ * a broken page.
+ *
+ * A visitor who has NOT pinned a theme is deliberately left without
+ * `data-theme`, so the CSS `prefers-color-scheme` query keeps tracking their
+ * OS live. Wrapped in try/catch because private-browsing modes throw on
+ * localStorage access.
+ *
+ * TODO(phase-9): needs the CSP nonce once script-src drops 'unsafe-inline' —
+ * see the note in next.config.ts.
+ */
+const themeScript = `(function(){try{var t=localStorage.getItem('gc-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}}catch(e){}})();`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      // The script above sets data-theme before React hydrates, so the client
+      // <html> legitimately differs from the server's. Scoped to this element.
+      suppressHydrationWarning
       className={`${spaceGrotesk.variable} ${dmSans.variable} h-full`}
     >
+      <head>
+        {/*
+          Deliberately a raw <script>, NOT next/script.
+
+          `strategy="beforeInteractive"` was tried and rejected: Next queues
+          inline content onto `self.__next_s` and replays it after the
+          framework chunks load, which is well after first paint — the exact
+          flash this exists to prevent. Verified in the SSR HTML.
+
+          The cost is a React dev-only console warning about script tags in a
+          component tree. The script does run (it is in the server HTML ahead
+          of every app chunk); the warning is about client re-render, which
+          does not apply here. Do not "fix" it back to next/script.
+        */}
+        <script
+          id="gc-theme-boot"
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
+      </head>
       <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );

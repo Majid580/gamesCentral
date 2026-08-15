@@ -25,6 +25,12 @@ completed_features:
   - "Phase 1: /track placeholder, PackageCard, Button, Logo, LegalShell components"
   - "Phase 1: integer-paisa money formatter that throws on float input"
   - "Phase 1: WCAG AA verified by measurement in both themes; 44px tap targets on mobile"
+  - "Phase 1.5: dispersion ramp (--spectrum-1..4) for decorative colour; green stays reserved for money"
+  - "Phase 1.5: header light/dark toggle with pre-paint inline script, localStorage, and color-scheme"
+  - "Phase 1.5: scroll-reveal system (one IntersectionObserver, data-reveal attribute, no dependencies)"
+  - "Phase 1.5: hero entrance stagger, headline gradient sweep, faceted-stone hero SVG, hover glow/sheen"
+  - "Phase 1.5: dark palette de-duplicated into --dark-* so light/dark values can no longer drift"
+  - "Phase 1.5: button skeleton moved to @layer components so caller classNames reliably override"
 
 in_progress_features: []
 
@@ -42,7 +48,9 @@ pending_features:
   - "Phase 11: Hostinger production cutover"
 
 known_issues:
-  - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md."
+  - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md. NOTE: the pre-paint theme script in app/layout.tsx needs that nonce when this lands."
+  - "The pre-paint theme script triggers a React dev-only console warning about script tags in a component tree. Intentional: next/script's beforeInteractive replays inline code after the framework chunks and would reintroduce a theme flash. Do not 'fix' it — see the comment in app/layout.tsx."
+  - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
   - "Home page renders lib/placeholder-catalogue.ts behind a visible 'preview build' notice. Prices are illustrative and MUST NOT ship publicly — Phase 3 deletes that module."
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
   - "Legal pages are substantive drafts carrying visible 'Draft — needs owner review' banners and inline TODO(owner) markers. Section 21 gates go-live on these being resolved."

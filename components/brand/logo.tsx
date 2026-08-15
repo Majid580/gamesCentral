@@ -20,11 +20,11 @@ export function Logo({
   showWordmark?: boolean;
 }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
+    <span className={cn("group/logo inline-flex items-center gap-2.5", className)}>
       <svg
         viewBox="0 0 32 32"
         aria-hidden="true"
-        className="h-8 w-8 shrink-0 text-primary"
+        className="h-8 w-8 shrink-0 text-primary transition-transform duration-500 ease-out group-hover/logo:rotate-[8deg] group-hover/logo:scale-105"
       >
         {/* Faceted diamond: top table, crown facets, pavilion. */}
         <path d="M16 2 L27 11 L16 30 L5 11 Z" fill="currentColor" opacity="0.18" />

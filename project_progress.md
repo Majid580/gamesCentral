@@ -5,6 +5,118 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Phase 1.5: colour system, theme toggle, and motion
+
+Visual and interaction pass over the Phase 1 shell. No commerce, auth, or
+fulfilment code touched. Requested scope was "better colour, keep light and
+dark, add animation including scroll animation".
+
+**Built**
+
+- **The dispersion ramp** (`--spectrum-1..4`). Decorative colour is no longer
+  ad-hoc: it walks the cool half of the visible spectrum — cyan, indigo,
+  fuchsia, rose — because that is what a cut diamond does to light, and
+  diamonds are the product. **Green is deliberately excluded from the ramp**,
+  so seeing green anywhere on the site still means money and never decoration.
+  Rule 1 of the palette survives intact.
+- **Light/dark toggle** in the header (`components/site/theme-toggle.tsx`).
+  The tokens already supported `data-theme`; nothing set it, so a visitor could
+  never see the other theme. Now they can, and the choice persists.
+- **Scroll reveal** (`components/site/scroll-reveal.tsx`) — one
+  IntersectionObserver mounted once in the site layout, driving any element
+  tagged `data-reveal`. Sections and pages stay Server Components and only
+  carry an attribute.
+- **Page-load entrance** on the hero (staggered), a slow gradient sweep across
+  the headline, hover glow + light-sweep on buttons and cards, sliding nav
+  underline, staggered mobile-nav panel.
+- **The hero stone** — a six-facet round-brilliant SVG in profile, where every
+  facet takes one stop of the ramp. It is both the hero image and the literal
+  definition of the page's colour system.
+- Ambient fixed mesh gradient behind every page, per theme.
+
+**Bugs found and fixed along the way**
+
+- **Dark mode could serve a colour that fails WCAG AA.** The dark palette was
+  written twice — once under `prefers-color-scheme`, once under
+  `[data-theme="dark"]` — and the two had drifted. The manual copy still
+  carried `--primary: #8b5cf6`, which measures 4.46:1 on the background against
+  a 4.5:1 floor. Harmless while nothing set `data-theme`; live the moment a
+  toggle exists. Fixed, and made structurally impossible to recur: dark values
+  are now declared once as `--dark-*` and mapped onto the live tokens by both
+  paths, so there is only one place a dark value can be written.
+- **`hidden sm:inline-flex` did not hide anything.** `cn()` is a plain join
+  with no conflict resolution, so the caller's `hidden` and the button's base
+  `inline-flex` tied on specificity and Tailwind's emit order decided it —
+  `inline-flex` won. The header CTA stayed visible on mobile. It fit before, so
+  nothing showed; adding the 44px theme toggle pushed the header 22px past the
+  viewport and exposed it. Fixed by moving the button skeleton into
+  `@layer components` (`.btn`), which Tailwind's utilities layer outranks, so a
+  caller's className now always wins. No `tailwind-merge` dependency needed.
+- Hover states written as hand-rolled CSS lacked Tailwind's implicit
+  `@media (hover: hover)` gate and would stick after a tap on touch. Gated.
+
+**Decisions and why**
+
+- **No animation library.** GSAP + ScrollTrigger is ~40KB for what
+  IntersectionObserver does in 30 lines. On a storefront, bundle size is a
+  conversion cost (Section 12.15). Everything animates transform, opacity, or
+  background-position only, so it stays on the compositor thread.
+- **Scroll reveal hides content behind `@media (scripting: enabled)`**, not a
+  JS-applied class. With JS off — or in a crawler that does not run it —
+  nothing is ever hidden, and `<html>` is never mutated, so there is no
+  hydration mismatch to suppress.
+- **The theme script is a raw inline `<script>`, not `next/script`.**
+  `strategy="beforeInteractive"` was tried and rejected: Next queues inline
+  content onto `self.__next_s` and replays it after the framework chunks load,
+  well after first paint — the exact flash it exists to prevent. Verified in
+  the SSR HTML. The cost is a React dev-only console warning, documented in
+  place so it does not get "fixed" back into a flash.
+- **A toggle that needs JS is hidden without JS** (`@media (scripting: none)`).
+  A control that silently does nothing is worse than no control.
+- **`useSyncExternalStore` rather than `useState` + effect** for the toggle's
+  label. The effective theme lives in two places React does not own — the DOM
+  attribute and the OS preference — and subscribing to both means the label
+  stays right when someone changes their system theme with the page open.
+- **Legal pages get no scroll animation.** They are reference documents that
+  people read under stress; revealing paragraphs as they scroll would be
+  hostile. They get the colour work only.
+- **Numbering kept on "How it works", added nowhere else.** Those steps are a
+  real sequence — you cannot pay before confirming the account — so the numbers
+  carry order rather than decorate.
+
+**Verified (measured, not eyeballed)**
+
+- **Contrast recomputed for every role each spectrum stop can play**, including
+  as text on its own 14%-tint chip. Two light-mode stops failed: `#0e7490` at
+  4.23:1 and `#e11d48` at 3.61:1 as a step number. Solved for the brightest
+  replacements that clear 4.5:1 everywhere — `#0d6d87` and `#bf193d` — rather
+  than guessing. All four stops now pass every role in both themes; dark mode
+  passed unchanged at 5.00–10.44.
+- Toggle round-trip in the browser: `data-theme`, `localStorage`,
+  `color-scheme`, resolved token values, button label, and the `theme-color`
+  meta tags all update correctly in both directions.
+- Mobile 375×812: horizontal overflow back to **0px**, every visible tap target
+  ≥44×44 (only the sr-only skip link measures smaller, by design).
+- `npm run build`: all 8 routes still prerender as **static** — neither the
+  toggle nor the reveal forced anything dynamic. `lint` and `typecheck` clean.
+
+**Not verified — needs a human**
+
+The Browser pane was not displayed during this session
+(`document.visibilityState === "hidden"`), so the page never composited frames.
+That means **no screenshot was taken and the scroll reveal was never observed
+firing** — IntersectionObserver does not report intersections in a hidden
+document. The wiring is confirmed correct (elements resolve to `opacity: 0`
+with the transform applied, the observer is constructed and observes 19
+targets), but the animation itself is unwatched. Open the preview and scroll
+before trusting it.
+
+**Next**
+
+- Unchanged: Phase 2 is still blocked on the SmileOne sandbox URL.
+
+---
+
 ## 2026-08-15 — Phase 2 (partial): SmileOne signing verified, sandbox host unreachable
 
 **Built**
