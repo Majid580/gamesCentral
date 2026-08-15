@@ -5,6 +5,111 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Phase 8: admin area, auth and order recovery
+
+Auth.js v5 login, dashboard, order search, and manual recovery for orders
+stuck at `paid_pending_fulfillment`. This is the screen that exists so a paid
+order can never be silently lost.
+
+**Built**
+
+- `auth.ts` (Auth.js v5) with a Credentials provider — the only provider, and
+  there is no sign-up path. The only way an AdminUser exists is
+  `npm run admin:create` run by hand on the server.
+- `proxy.ts` — Next.js 16 renamed Middleware to **Proxy**
+  (`node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md`).
+- `lib/services/admin-auth.ts` — bcrypt verification and rate limiting.
+- `lib/services/admin.ts` — stats, order list/detail, and `transitionOrder`.
+- `/admin`, `/admin/login`, `/admin/orders`, `/admin/orders/[orderId]`.
+- `LoginAttempt` model with a TTL index.
+- `npm run admin:create -- <email> [admin|operator]`.
+
+**Two layers of authorisation, deliberately**
+
+Next.js 16's own Proxy docs say it is **not** an authorisation solution — it
+runs before the request completes and should only do cheap optimistic checks.
+So `proxy.ts` checks for the *presence* of a session cookie and redirects, and
+nothing more. The real check is `requireAdmin()`, which every admin data
+function calls before touching the database.
+
+That split is what makes a new admin page safe by construction: it cannot
+render customer data without calling a data function, and every data function
+has already authorised. A matcher typo in `proxy.ts` would expose a route; it
+would not expose any data.
+
+Verified by sending a **forged session cookie**: it passes the proxy's presence
+check exactly as designed, then `requireAdmin()` redirects it to the login page
+with nothing leaked.
+
+**Decisions and why**
+
+- **bcrypt, not argon2id.** argon2 is the stronger algorithm, but every Node
+  binding ships native code and the Hostinger plan type is still undecided. A
+  hash that cannot be computed on the production host is worse than a slightly
+  weaker one that can. Revisit if the plan turns out to be a VPS.
+- **Rate limiting counts email and IP as separate keys.** Email-only lets an
+  attacker lock a real admin out of their own dashboard; IP-only lets a botnet
+  walk one password list across many addresses. Five failures in fifteen
+  minutes blocks either.
+- **Stored in MongoDB with a TTL index**, not an edge KV — production is a
+  self-hosted Node process, and a rate limiter that needs its own cleanup job
+  stops working silently when that job dies.
+- **Every login failure renders the same message** and the rate limit is never
+  named. Distinguishing "no such account" from "wrong password" turns the form
+  into an account-enumeration oracle. `verifyAdminCredentials` also runs a
+  bcrypt comparison against a dummy hash when the user does not exist, so a
+  miss takes as long as a hit.
+- **`admin:create` generates the password and never accepts one as an
+  argument.** Shell arguments land in shell history and in the process list,
+  which is the wrong place for a credential that can read customer data.
+- **Manual transitions go through the same status machine as the code path.**
+  An admin picks from `allowedTransitions` only, and `transitionOrder`
+  re-checks server-side, so `failed` is unreachable once an order is paid
+  (rule 8). The update is an atomic conditional on the current status, so two
+  operators clicking at once cannot both apply it (rule 3) — the second is
+  told the order changed underneath them.
+- **Search input is regex-escaped** before it reaches a Mongo query. An
+  unescaped user string is both a ReDoS and a wildcard-match bug.
+- **Sessions are JWT and expire in 8 hours.** This session can read customer
+  contact details and retry deliveries; an admin laptop left open should not
+  stay authorised all week.
+
+**Verified** (production build on a spare port)
+
+- Signed out, `/admin`, `/admin/orders`, and `/admin/orders/[id]` all 307 to
+  the login page with the intended destination preserved in `?from=`.
+- A forged session cookie reaches `requireAdmin()` and is rejected; no
+  dashboard content in the response.
+- Wrong password → generic error. Correct password → session issued, redirect
+  to `/admin`, both pages render.
+- **Rate limit holds under the test that matters**: after five failures the
+  *correct* password is also refused.
+- Temporary probe admin and all login-attempt rows deleted afterwards; admins
+  and orders both back to 0.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build` clean; build reports
+  `ƒ Proxy (Middleware)`.
+
+**Snags**
+
+- `notFound()` was imported from `next/cache` instead of `next/navigation`.
+  It still existed, so the only symptom was fourteen "order is possibly null"
+  type errors — the return type was not `never`, so TypeScript never narrowed.
+- The new `LoginAttempt` model was invisible to `db:sync-indexes` until it was
+  added to that script's model list, so its TTL index silently did not exist.
+  Worth remembering: adding a model is two steps, not one.
+
+**Not built yet** — catalogue/price editing from the admin UI. Prices are
+owner-set and currently change through `lib/catalogue-source.ts` +
+`npm run db:seed`, which is reviewable as a diff. A price editor is worth
+having but it edits live money and deserves its own pass.
+
+**Next**
+
+- Phase 7: guest order lookup on `/track` — unblocked.
+- Phase 9: security review, now that auth exists alongside the money code.
+
+---
+
 ## 2026-08-15 — Phase 4: checkout flow, payment stubbed
 
 Storefront → checkout → order. The selection bar's Continue button is live and

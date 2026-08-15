@@ -1,6 +1,6 @@
 project: Games Central
 last_updated: "2026-08-15"
-current_phase: "phase-5-payfast (phases 3 and 4 complete; 2 blocked on SmileOne base URL)"
+current_phase: "phase-5-payfast (phases 3, 4, 8 complete; 2 blocked on SmileOne base URL)"
 
 tech_stack:
   frontend: "Next.js 16.3.1 App Router (Turbopack), React 19.2, Tailwind v4"
@@ -51,6 +51,11 @@ completed_features:
   - "Phase 4: createPendingOrder takes NO price parameter — cost is read from our catalogue (rule 1, verified under attack)"
   - "Phase 4: SMILEONE_STUB=1 dev-only getrole stub; THROWS on a production build rather than fabricating a username"
   - "Phase 4: /order/[orderId] confirmation; findOrderForGuest exists with the IDOR guard (needs orderId + email/phone)"
+  - "Phase 8: Auth.js v5 admin auth (credentials only, no sign-up path); proxy.ts optimistic gate + requireAdmin() in every data fn"
+  - "Phase 8: admin dashboard, order search/filter, order detail with status history"
+  - "Phase 8: manual status recovery via the same status machine + atomic conditional update (rules 3 and 8)"
+  - "Phase 8: bcrypt password hashing; MongoDB TTL-backed login rate limiting on email AND IP (5 per 15 min)"
+  - "Phase 8: npm run admin:create -- <email> [admin|operator] — generates the password, never takes one as an argument"
 
 in_progress_features: []
 
@@ -59,7 +64,6 @@ pending_features:
   - "Phase 5: PayFast sandbox hosted checkout"
   - "Phase 6: real fulfillment via createorder + idempotency"
   - "Phase 7: order confirmation + guest status lookup"
-  - "Phase 8: admin dashboard (Auth.js)"
   - "Phase 9: code security hardening (claude-security)"
   - "Phase 9.5: live pen test (strix-pentest)"
   - "Phase 10: performance pass"
@@ -87,6 +91,14 @@ known_issues:
     not remove that class, and do not set the theme attribute from anywhere
     else without it.
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
+  - |
+    Admin catalogue/price editing is NOT built. Prices are owner-set and change
+    through lib/catalogue-source.ts + `npm run db:seed`, which is reviewable as
+    a diff. A price editor edits live money and deserves its own pass.
+  - |
+    Adding a Mongoose model is TWO steps: create it, and add it to the model
+    list in scripts/db-sync-indexes.mts. LoginAttempt's TTL index silently did
+    not exist until the second step was done.
   - |
     ATLAS CREDENTIALS ARE root/root — GO-LIVE BLOCKER, NOT A DEV BLOCKER.
     Works fine for building, but this database will hold real orders and
@@ -164,6 +176,8 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
+  - "Create the first real admin: npm run admin:create -- <your-email> admin"
+  - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists"
   - "Phase 5: PayFast hosted checkout — blocked on merchant sandbox credentials + field-level docs"
   - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists with the IDOR guard"
   - "Map each of the 26 products to its SmileOne productid once the sandbox base URL exists"

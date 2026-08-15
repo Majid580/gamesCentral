@@ -24,6 +24,7 @@ import { resolveMongoUri } from "../lib/utils/dns-resolver.ts";
 import { AdminUserModel } from "../lib/models/admin-user.ts";
 import { AppConfigModel } from "../lib/models/app-config.ts";
 import { GameModel } from "../lib/models/game.ts";
+import { LoginAttemptModel } from "../lib/models/login-attempt.ts";
 import { OrderModel } from "../lib/models/order.ts";
 import { ProductModel } from "../lib/models/product.ts";
 
@@ -34,7 +35,14 @@ if (!uri) {
   process.exit(1);
 }
 
-const models = [GameModel, ProductModel, OrderModel, AppConfigModel, AdminUserModel];
+const models = [
+  GameModel,
+  ProductModel,
+  OrderModel,
+  AppConfigModel,
+  AdminUserModel,
+  LoginAttemptModel,
+];
 
 try {
   const dialable = await resolveMongoUri(uri);

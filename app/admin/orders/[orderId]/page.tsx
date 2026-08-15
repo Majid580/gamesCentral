@@ -1,0 +1,171 @@
+import Link from "next/link";
+import { revalidatePath } from "next/cache";
+import { notFound } from "next/navigation";
+
+import { StatusPill } from "@/components/admin/status-pill";
+import type { OrderStatus } from "@/lib/models/order";
+import { getOrder, transitionOrder } from "@/lib/services/admin";
+import { formatPkr } from "@/lib/utils/money";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminOrderDetail({
+  params,
+}: {
+  params: Promise<{ orderId: string }>;
+}) {
+  const { orderId } = await params;
+  const order = await getOrder(orderId);
+
+  if (!order) notFound();
+
+  async function applyTransition(formData: FormData) {
+    "use server";
+
+    const to = String(formData.get("to") ?? "") as OrderStatus;
+    const note = String(formData.get("note") ?? "").trim() || "Manual admin action";
+
+    // transitionOrder re-checks authorisation and the status machine itself —
+    // this action is reachable by anyone who can POST to the page.
+    const result = await transitionOrder({ orderId, to, note });
+
+    if (result.ok) revalidatePath(`/admin/orders/${orderId}`);
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl px-5 py-8">
+      <Link
+        href="/admin/orders"
+        className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground"
+      >
+        ← All orders
+      </Link>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <h1 className="font-display text-2xl font-bold">{order.orderId}</h1>
+        <StatusPill status={order.status} />
+      </div>
+
+      {order.owesFulfilment && (
+        <p className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+          <strong className="font-semibold">This customer has paid.</strong>{" "}
+          {order.status === "paid_pending_fulfillment"
+            ? "Delivery failed and needs to be completed by hand."
+            : "Delivery is in progress or pending."}
+        </p>
+      )}
+
+      <dl className="mt-6 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2">
+        <Row label="Package" value={order.productName} />
+        <Row label="Charged" value={formatPkr(order.pricePkr)} />
+        <Row label="Player ID" value={order.playerId} />
+        <Row label="Zone ID" value={order.zoneId ?? "—"} />
+        <Row label="In-game name" value={order.confirmedUsername ?? "not confirmed"} />
+        <Row label="Placed" value={new Date(order.createdAt).toLocaleString("en-PK")} />
+        <Row label="Email" value={order.contactEmail} />
+        <Row label="Phone" value={order.contactPhone} />
+        <Row label="Payment reference" value={order.paymentReference ?? "—"} />
+        <Row label="SmileOne order" value={order.smileOneOrderId ?? "—"} />
+      </dl>
+
+      {/* ---- recovery ---- */}
+      <section className="mt-8">
+        <h2 className="font-display text-lg font-semibold">Change status</h2>
+
+        {order.allowedTransitions.length === 0 ? (
+          <p className="mt-3 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+            <strong className="font-semibold text-foreground">
+              {order.status} is a final state.
+            </strong>{" "}
+            There is no legal transition out of it.
+          </p>
+        ) : (
+          <form action={applyTransition} className="mt-3 space-y-4">
+            <div>
+              <label htmlFor="to" className="block text-sm font-medium">
+                New status
+              </label>
+              {/*
+                Only legal transitions are offered, and transitionOrder
+                re-checks them server-side. Notably `failed` never appears once
+                an order is paid — that edge does not exist in the machine, so
+                a paid order can never be quietly written off (rule 8).
+              */}
+              <select
+                id="to"
+                name="to"
+                required
+                className="mt-2 h-12 rounded-xl border border-border bg-input px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {order.allowedTransitions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="note" className="block text-sm font-medium">
+                Reason
+              </label>
+              <p id="note-hint" className="mt-1 text-xs text-muted-foreground">
+                Recorded in the order history with your email. Say what you did
+                and why.
+              </p>
+              <input
+                id="note"
+                name="note"
+                aria-describedby="note-hint"
+                maxLength={400}
+                className="mt-2 h-12 w-full rounded-xl border border-border bg-input px-4 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+
+            <button type="submit" className="btn h-12 bg-primary px-5 text-primary-foreground">
+              Apply change
+            </button>
+          </form>
+        )}
+      </section>
+
+      {/* ---- history ---- */}
+      <section className="mt-10">
+        <h2 className="font-display text-lg font-semibold">History</h2>
+        {order.statusHistory.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            No transitions recorded yet.
+          </p>
+        ) : (
+          <ol className="mt-3 space-y-2">
+            {order.statusHistory.map((entry, i) => (
+              <li
+                key={`${entry.at}-${i}`}
+                className="rounded-xl border border-border bg-card p-4 text-sm"
+              >
+                <p className="font-medium">
+                  {entry.from} → {entry.to}
+                </p>
+                {entry.note && (
+                  <p className="mt-1 text-muted-foreground">{entry.note}</p>
+                )}
+                <time dateTime={entry.at} className="mt-1 block text-xs text-muted-foreground">
+                  {new Date(entry.at).toLocaleString("en-PK")}
+                </time>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-card p-4">
+      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-medium">{value}</dd>
+    </div>
+  );
+}
