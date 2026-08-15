@@ -29,8 +29,24 @@ export function ThemeToggle() {
 
   function toggle() {
     const next: Theme = getSnapshot() === "dark" ? "light" : "dark";
+    const root = document.documentElement;
 
-    document.documentElement.dataset.theme = next;
+    /*
+     * Swap the palette with transitions switched off for this one frame.
+     *
+     * A CSS transition holds the computed colour it captured and does not
+     * re-run when the custom property behind that colour changes, so any
+     * element carrying `transition-colors` would keep painting the previous
+     * theme's value — see the `.theme-switching` note in globals.css for the
+     * measured failure. Reading a computed style between the attribute change
+     * and removing the class forces the recalculation to happen while
+     * transitions are still suppressed, which is what makes this synchronous
+     * and leaves no chance of the class being left behind.
+     */
+    root.classList.add("theme-switching");
+    root.dataset.theme = next;
+    void window.getComputedStyle(root).backgroundColor;
+    root.classList.remove("theme-switching");
 
     try {
       localStorage.setItem(STORAGE_KEY, next);

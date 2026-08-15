@@ -665,6 +665,31 @@
   }
 }
 
+/*
+ * Transitions are suppressed for the single frame in which the theme changes.
+ *
+ * A CSS transition captures the COMPUTED value of the property it animates. If
+ * that value came from a custom property and the custom property changes
+ * underneath it — which is exactly what flipping --background, --foreground and
+ * friends does — the transition does not re-run, and the element keeps painting
+ * the previous theme's colour indefinitely.
+ *
+ * Measured before this existed: the storefront's "Select" label held the dark
+ * theme's #a5a1bd on a white card after switching to light. 2.49:1 against a
+ * 4.5:1 requirement, on every card in the grid.
+ *
+ * Fixing it per-component means auditing every `transition-colors` in the
+ * codebase forever. Suppressing transitions for the instant of the swap fixes
+ * the whole class of bug once: colours land directly on their new values, and
+ * hover transitions keep working the rest of the time. ThemeToggle adds this
+ * class, forces a style recalc, and removes it synchronously.
+ */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
 .theme-icon {
   /* Both icons stack in one grid cell so they can cross-fade in place. */
   grid-area: 1 / 1;
