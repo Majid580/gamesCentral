@@ -5,6 +5,107 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Phase 4: checkout flow, payment stubbed
+
+Storefront → checkout → order. The selection bar's Continue button is live and
+now routes to a real checkout. No money moves yet.
+
+**Built**
+
+- `/checkout/[sku]` — order summary plus a three-stage form. `force-dynamic`,
+  because the price shown must be the current one.
+- `POST /api/checkout/verify-account` and `POST /api/checkout/create-order` —
+  thin handlers over `lib/controllers/checkout.ts`, per the route → controller
+  → service → model rule.
+- `lib/services/orders.ts` — `createPendingOrder` and `findOrderForGuest`.
+- `/order/[orderId]` — post-checkout confirmation.
+- Theme-switch transition fix (see the separate commit) shipped alongside.
+
+**Three stages, not one form.** Identify the account, confirm the username,
+then pay. The confirmation step is the entire reason the flow is shaped this
+way: a mistyped Player ID delivers to a stranger and the money is gone, so the
+customer has to see the in-game name and actively accept it. It is never
+auto-advanced, and "That's not me — change ID" is always available.
+
+**The `getrole` stub, and why it is shaped the way it is**
+
+The SmileOne sandbox host still does not resolve, so account verification
+cannot be performed at all. Without a stub the whole checkout UI would be
+unbuildable and untestable. `SMILEONE_STUB=1` returns a deterministic
+generated username in development, and a Player ID ending in `0` is treated as
+not found so the failure path gets exercised too. The confirmation card shows a
+visible "Development stub" warning whenever the name is generated.
+
+The guard **throws** if the flag is set on a production build rather than
+falling back quietly — a fabricated username that lets a real customer pay for
+delivery to an unchecked account is the worst available outcome. There is
+deliberately no `NEXT_PUBLIC_` variant, so nothing the browser sends can turn
+it on.
+
+That guard was initially written at module scope, which **broke the build**:
+`next build` sets `NODE_ENV=production` and imports every route to collect page
+data, so any machine with the stub enabled for local development could not
+build. Moved inside the function, so it fires at the point of use. Builds work;
+the dangerous combination still cannot be served.
+
+**Decisions and why**
+
+- **`createPendingOrder` has no price parameter.** Not "ignores one" — there
+  is nowhere to pass a price. The client sends a SKU; the cost is read from
+  our own catalogue document (rule 1). `quotedPricePkr` is accepted only so
+  the server can *report* that the price moved mid-checkout instead of quietly
+  charging a different amount.
+- **`/order/[orderId]` deliberately does not look the order up.** Order IDs
+  are shown on screen, forwarded in messages, and sit in browser history, so
+  the ID alone must never be enough to read someone's contact details or
+  delivery target. `findOrderForGuest` requires a matching email or phone;
+  wiring it in is Phase 7.
+- **The confirmation page says plainly that no payment was taken.** A page
+  that looks like a receipt is the worst possible place to be vague about
+  whether money moved.
+- **Errors sit next to the field that caused them** and the server returns a
+  `field` key so the client can mark the right input. No upstream message or
+  endpoint is ever forwarded to the browser (rule 7).
+
+**Two bugs found**
+
+1. **Every order failed validation.** `Order.pricing.basePriceUsdCents` was
+   `required`, but under the owner-set pricing model products have no supplier
+   base price — it is `null` on all 26. The Order schema still assumed the
+   computed-pricing model the catalogue had already moved away from. Made
+   nullable.
+2. **Schema edits do not reach a running dev server.** `defineModel` returns
+   the already-registered model from `globalThis`, which is what makes hot
+   reload work — and also means a changed schema is ignored until the process
+   restarts. Cost a confusing round of "the fix didn't work" before the fresh
+   process proved it had.
+
+**Verified** (against a production build on a spare port, since Next refuses a
+second dev server for the same directory)
+
+- **Rule 1 holds under attack.** A client claiming `quotedPricePkr: 1` is
+  still charged 115000 paisa and the response flags `priceChanged: true`. A
+  client injecting `pricePkr: 1` into the body is also charged 115000 — zod
+  strips unknown keys and the service never reads a caller-supplied price.
+- **The stub refuses to run in production**: with `SMILEONE_STUB=1` and
+  `NODE_ENV=production`, verify-account throws rather than returning a name.
+- NoSQL operator injection (`sku: { $ne: null }`) rejected at the zod layer
+  with 400 before reaching a query.
+- Validation: bad Player ID → 400 with `field`; unknown SKU → 409; bad phone →
+  400; stub not-found path → 404.
+- Checkout page renders the right summary ("250 paid + 250 free = 500
+  diamonds", Rs 1,150).
+- Test orders removed afterwards; orders collection back to 0.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build` clean.
+
+**Next**
+
+- Phase 5: PayFast hosted checkout — still blocked on merchant credentials.
+- Phase 7's order lookup can be built now; `findOrderForGuest` already exists
+  with the IDOR guard.
+
+---
+
 ## 2026-08-15 — Real catalogue live: 26 products, 3D storefront cards
 
 The owner supplied `Catalogue.xlsx` (OneDrive) with the real Mobile Legends

@@ -149,7 +149,24 @@ const orderSchema = new Schema(
      * either is edited, and a customer dispute months later cannot be settled.
      */
     pricing: {
-      basePriceUsdCents: integerMoneyField("US cents"),
+      /**
+       * Nullable: under the owner-set pricing model most products have no
+       * supplier base price at all, and requiring one here made every order
+       * fail validation. When a product is later mapped to a SmileOne SKU this
+       * captures what the supplier charged, so margin stays auditable.
+       */
+      basePriceUsdCents: {
+        type: Number,
+        default: null,
+        min: 0,
+        validate: {
+          validator: (v: number | null) => v === null || Number.isInteger(v),
+          message: "pricing.basePriceUsdCents must be an integer (US cents)",
+        },
+      },
+      /** 1 and 0 for owner-priced products: recorded so the snapshot states
+       *  plainly that no conversion or markup was applied, rather than leaving
+       *  it ambiguous whether a rate was used and then lost. */
       exchangeRate: { type: Number, required: true, min: 0 },
       markupPercentage: { type: Number, required: true, min: 0 },
       /**

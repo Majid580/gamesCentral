@@ -1,6 +1,6 @@
 import "server-only";
 
-import { connectToDatabase } from "@/lib/models/db";
+import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { GameModel } from "@/lib/models/game";
 import { ProductModel, type ProductKind } from "@/lib/models/product";
 import { KIND_ORDER } from "@/lib/catalogue-source";
@@ -31,6 +31,55 @@ export type StorefrontSection = {
   kind: ProductKind;
   products: StorefrontProduct[];
 };
+
+export type CheckoutProduct = StorefrontProduct & {
+  gameName: string;
+  gameSlug: string;
+  requiresZoneId: boolean;
+};
+
+/**
+ * One product by SKU, with the game context checkout needs.
+ *
+ * The returned `pricePkr` is what the page displays. It is not what the
+ * customer is charged — order creation re-reads the price server-side (rule 1),
+ * so a catalogue edit between render and submit cannot be exploited.
+ */
+export async function getCheckoutProduct(
+  sku: string,
+): Promise<CheckoutProduct | null> {
+  await connectToDatabase();
+
+  const product = await ProductModel.findOne({
+    sku: String(assertScalar(sku, "sku")),
+    isActive: true,
+  })
+    .select("sku kind displayName tagline diamondAmount bonusDiamonds pricePkr featured game")
+    .lean();
+
+  if (!product) return null;
+
+  const game = await GameModel.findById(product.game)
+    .select("name slug requiresZoneId isActive")
+    .lean();
+
+  if (!game || !game.isActive) return null;
+
+  return {
+    id: String(product._id),
+    sku: product.sku,
+    kind: product.kind as ProductKind,
+    displayName: product.displayName,
+    tagline: product.tagline ?? null,
+    diamondAmount: product.diamondAmount ?? null,
+    bonusDiamonds: product.bonusDiamonds ?? null,
+    pricePkr: product.pricePkr,
+    featured: Boolean(product.featured),
+    gameName: game.name,
+    gameSlug: game.slug,
+    requiresZoneId: Boolean(game.requiresZoneId),
+  };
+}
 
 /**
  * Active products for one game, grouped into display sections.

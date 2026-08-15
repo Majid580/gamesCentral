@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { ProductCard } from "@/components/store/product-card";
+import { ButtonLink } from "@/components/ui/button";
 import { KIND_LABELS } from "@/lib/catalogue-source";
 import type { StorefrontProduct, StorefrontSection } from "@/lib/services/catalogue";
 import { formatPkr } from "@/lib/utils/money";
@@ -177,30 +178,26 @@ function SelectionBar({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{selected.displayName}</p>
             <p className="text-xs text-muted-foreground">
-              {formatPkr(selected.pricePkr)} · Checkout opens in the next update
+              {formatPkr(selected.pricePkr)} · all-in
             </p>
           </div>
 
           <button
             type="button"
             onClick={onClear}
-            className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             Clear
           </button>
 
-          {/*
-            Deliberately disabled rather than hidden or linked to a 404: the
-            checkout flow is the next build step, and a dead-end link would be
-            worse than an honest unavailable state.
-          */}
-          <button
-            type="button"
-            disabled
-            className="btn min-h-11 shrink-0 bg-accent px-4 text-sm text-accent-foreground"
+          <ButtonLink
+            href={`/checkout/${selected.sku}`}
+            variant="buy"
+            size="sm"
+            className="shrink-0"
           >
             Continue
-          </button>
+          </ButtonLink>
         </div>
       )}
     </div>

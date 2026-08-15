@@ -1,6 +1,6 @@
 project: Games Central
 last_updated: "2026-08-15"
-current_phase: "phase-2-smileone-integration"
+current_phase: "phase-5-payfast (phases 3 and 4 complete; 2 blocked on SmileOne base URL)"
 
 tech_stack:
   frontend: "Next.js 16.3.1 App Router (Turbopack), React 19.2, Tailwind v4"
@@ -45,13 +45,17 @@ completed_features:
   - "Phase 3: 3D 'stone' cards — dispersion-coloured slab depth (touch), pointer tilt + specular (fine pointer)"
   - "Phase 3: storefront reads MongoDB via lib/services/catalogue.ts; placeholder catalogue deleted"
   - "Phase 3: contrast measured on 112 text elements in both themes — zero failures"
+  - "Theme-switch fix: .theme-switching suppresses transitions for one frame so colours cannot stick to the old palette"
+  - "Phase 4: /checkout/[sku] three-stage flow (identify -> confirm username -> pay), payment stubbed"
+  - "Phase 4: verify-account + create-order API routes over lib/controllers/checkout.ts (route->controller->service->model)"
+  - "Phase 4: createPendingOrder takes NO price parameter — cost is read from our catalogue (rule 1, verified under attack)"
+  - "Phase 4: SMILEONE_STUB=1 dev-only getrole stub; THROWS on a production build rather than fabricating a username"
+  - "Phase 4: /order/[orderId] confirmation; findOrderForGuest exists with the IDOR guard (needs orderId + email/phone)"
 
 in_progress_features: []
 
 pending_features:
-  - "Phase 2: SmileOne sandbox (sign util, productlist sync, getrole)"
-  - "Phase 3: product browsing UI"
-  - "Phase 4: checkout flow UI, payment stubbed"
+  - "Phase 2: SmileOne sandbox (sign util, productlist sync, getrole) — blocked on base URL"
   - "Phase 5: PayFast sandbox hosted checkout"
   - "Phase 6: real fulfillment via createorder + idempotency"
   - "Phase 7: order confirmation + guest status lookup"
@@ -73,14 +77,15 @@ known_issues:
     and 3D matrix both read back) but the motion is unwatched. Confirm in a
     real browser.
   - |
-    Site chrome still uses `transition-colors` on themed colours in
-    nav-links.tsx, site-footer.tsx, mobile-nav.tsx and theme-toggle.tsx. A CSS
-    transition captures the computed colour and does not re-run when the
-    underlying custom property changes, so an element mid/post-transition when
-    the theme flips can keep the previous theme's colour. Proven on the product
-    card's Select label (2.49:1 in light mode) and fixed there. The theme
-    toggle is the highest-risk remaining case since it is hovered at the exact
-    moment the theme changes. Not yet fixed — out of scope for Phase 3.
+    RESOLVED — kept as a note because the failure mode is easy to reintroduce.
+    A CSS transition captures the computed colour and does not re-run when the
+    custom property behind it changes, so any element carrying
+    `transition-colors` could keep painting the previous theme's colour after a
+    switch (measured: 2.49:1 on the storefront's Select label). Fixed globally:
+    ThemeToggle adds `.theme-switching`, which suppresses transitions for the
+    single frame of the swap. New components need no special handling — but do
+    not remove that class, and do not set the theme attribute from anywhere
+    else without it.
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
   - |
     ATLAS CREDENTIALS ARE root/root — GO-LIVE BLOCKER, NOT A DEV BLOCKER.
@@ -94,8 +99,13 @@ known_issues:
     NameServer registry value, finds none, and falls back to 127.0.0.1 where
     nothing listens. dns.lookup still works, so only mongodb+srv:// breaks —
     it fails as `querySrv ECONNREFUSED`, which looks like a dead cluster.
-    Worked around by ensureSrvResolverAvailable() in lib/utils/dns-resolver.ts,
-    which fires only when no usable nameserver exists. Permanent fix is to set
+    Worked around by resolveMongoUri() in lib/utils/dns-resolver.ts, which
+    probes the default resolver and, only when it cannot do SRV, looks the
+    record up on a private Resolver and rewrites the URI to its non-SRV
+    equivalent (appending tls=true, which mongodb+srv implies and mongodb://
+    does not). An earlier dns.setServers() approach was REPLACED because it
+    only works if it runs before anything else in the process touches DNS —
+    true in a script, false in the Next.js server. Permanent fix is to set
     a static DNS server on the adapter. Not an issue on the Linux production
     target.
   - "Legal pages are substantive drafts carrying visible 'Draft — needs owner review' banners and inline TODO(owner) markers. Section 21 gates go-live on these being resolved."
@@ -154,7 +164,8 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "Phase 4: checkout flow — the storefront selection bar is wired and waiting for it (Continue is deliberately disabled)"
+  - "Phase 5: PayFast hosted checkout — blocked on merchant sandbox credentials + field-level docs"
+  - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists with the IDOR guard"
   - "Map each of the 26 products to its SmileOne productid once the sandbox base URL exists"
   - "Phase 2: productlist sync into the Product collection (schemas ready, still blocked on SmileOne base URL)"
   - "Collect from owner: real logo files, contact address/phone, markup % and USD->PKR rate"
