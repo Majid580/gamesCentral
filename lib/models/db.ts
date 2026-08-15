@@ -3,6 +3,7 @@ import "server-only";
 import mongoose from "mongoose";
 
 import { requireEnv } from "@/lib/env";
+import { ensureSrvResolverAvailable } from "@/lib/utils/dns-resolver";
 
 /**
  * Pooled Mongoose connection, cached on the global object.
@@ -37,6 +38,11 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
 
   if (!cache.promise) {
     const uri = requireEnv("DATABASE_URL");
+
+    // `mongodb+srv://` resolves an SRV record before it can reach a node, and
+    // that lookup bypasses the OS resolver. No-op unless this process has no
+    // working nameserver at all.
+    if (uri.startsWith("mongodb+srv://")) ensureSrvResolverAvailable();
 
     cache.promise = mongoose.connect(uri, {
       // Fail fast instead of silently queueing operations when the pool is

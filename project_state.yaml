@@ -31,6 +31,9 @@ completed_features:
   - "Phase 1.5: hero entrance stagger, headline gradient sweep, faceted-stone hero SVG, hover glow/sheen"
   - "Phase 1.5: dark palette de-duplicated into --dark-* so light/dark values can no longer drift"
   - "Phase 1.5: button skeleton moved to @layer components so caller classNames reliably override"
+  - "MongoDB Atlas connected: DATABASE_URL set (db gamescentral), verified reachable + writable, server 8.0.29"
+  - "npm run db:check (scripts/db-check.mts) — credential-redacting connectivity + write-access probe"
+  - "lib/utils/dns-resolver.ts — guarded SRV resolver repair for Node's c-ares on DHCP-DNS Windows hosts"
 
 in_progress_features: []
 
@@ -53,6 +56,22 @@ known_issues:
   - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
   - "Home page renders lib/placeholder-catalogue.ts behind a visible 'preview build' notice. Prices are illustrative and MUST NOT ship publicly — Phase 3 deletes that module."
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
+  - |
+    ATLAS CREDENTIALS ARE root/root — GO-LIVE BLOCKER, NOT A DEV BLOCKER.
+    Works fine for building, but this database will hold real orders and
+    customer contact details. Before launch: strong generated password, a
+    least-privilege user scoped readWrite on `gamescentral` only (not an
+    admin/root user), and confirm Network Access is not left at 0.0.0.0/0.
+  - |
+    Node cannot perform SRV lookups on this Windows dev machine: DNS is
+    DHCP-assigned (DhcpNameServer), Node's bundled c-ares only reads the static
+    NameServer registry value, finds none, and falls back to 127.0.0.1 where
+    nothing listens. dns.lookup still works, so only mongodb+srv:// breaks —
+    it fails as `querySrv ECONNREFUSED`, which looks like a dead cluster.
+    Worked around by ensureSrvResolverAvailable() in lib/utils/dns-resolver.ts,
+    which fires only when no usable nameserver exists. Permanent fix is to set
+    a static DNS server on the adapter. Not an issue on the Linux production
+    target.
   - "Legal pages are substantive drafts carrying visible 'Draft — needs owner review' banners and inline TODO(owner) markers. Section 21 gates go-live on these being resolved."
 
 blockers:
@@ -69,12 +88,20 @@ blockers:
     SmileOne account manager. Until then, productlist/getrole cannot be
     verified live and the response schemas in lib/services/smileone/client.ts
     remain unconfirmed guesses.
-  - "DATABASE_URL: real MongoDB Atlas connection string not yet provided by owner."
   - "PayFast: no merchant sandbox credentials yet, and hosted-checkout field-level docs still needed from the PayFast dashboard/account manager. Phase 5 cannot start without both."
   - "Hostinger plan type (VPS vs Node.js shared hosting) unknown — determines the Phase 11 deploy method. Not blocking until Phase 11."
   - "Brand assets: owner has dark/light logos as JPG. Need PNG/SVG with transparency before final polish. Not a launch blocker."
 
 external_integrations:
+  mongodb_atlas:
+    status: "connected"
+    cluster: "cluster0.gbfasmm.mongodb.net (MongoDB 8.0.29)"
+    database: "gamescentral"
+    access: "connect + write verified via insert/delete round-trip"
+    collections: "none yet"
+    verify_command: "npm run db:check"
+    last_tested: "2026-08-15"
+    security_debt: "credentials are root/root — see known_issues; must be rotated to a least-privilege user before go-live"
   smileone:
     status: "blocked-sandbox-host-unreachable"
     signing: "implemented and self-verified (sorted-key independence, 32-char hex digest, rejects pre-set sign)"
@@ -94,6 +121,7 @@ decisions:
 
 next_steps:
   - "Phase 2: SmileOne sign utility (double MD5), productlist sync into MongoDB, getrole"
-  - "Collect from owner: Atlas connection string (blocks Phase 2 sync), real logo files, contact address/phone, markup % and USD->PKR rate"
+  - "Now unblocked by the live cluster: Product/Order Mongoose schemas + explicit index sync"
+  - "Collect from owner: real logo files, contact address/phone, markup % and USD->PKR rate"
   - "Confirm with owner: PayFast hosted-checkout mode + request field-level docs from the merchant dashboard (blocks Phase 5)"
   - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines Phase 11 deploy method"

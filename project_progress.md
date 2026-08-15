@@ -5,6 +5,88 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — MongoDB Atlas connected; Node SRV resolver fault diagnosed
+
+The owner supplied the Atlas connection string, clearing the longest-standing
+blocker. The cluster is live and writable, but reaching it exposed a local
+resolver fault that had to be fixed before any DB-backed work could run.
+
+**Built**
+
+- `DATABASE_URL` written to `.env.local` (gitignored) with an explicit
+  `/gamescentral` database segment — without a path segment the driver
+  silently connects to `test`, which would have scattered collections into the
+  wrong database for the rest of the build.
+- `scripts/db-check.mts` + `npm run db:check` — a standalone connectivity
+  probe. Redacts credentials from all output, reports server version and
+  collections, then round-trips an insert/delete to prove the Atlas user has
+  **write** access and not merely connect access. A read-only user passes
+  `ping` and fails the first real checkout; better to learn that now.
+  Failures print a cause-specific hint (DNS / auth / IP allowlist).
+- `lib/utils/dns-resolver.ts` — `ensureSrvResolverAvailable()`, called from
+  `connectToDatabase()` and the probe, but only for `mongodb+srv://` URIs.
+
+**The SRV fault, since it will recur on any Windows dev machine**
+
+`mongodb+srv://` must resolve an SRV record first, and Node does that with its
+bundled c-ares resolver (`dns.resolveSrv`) — *not* the OS resolver behind
+`dns.lookup`. On Windows, c-ares reads nameservers from the static
+`NameServer` registry value. This machine's DNS is DHCP-assigned, so the
+address lives in `DhcpNameServer`, c-ares found no servers, and fell back to
+its compiled-in default of `127.0.0.1` where nothing is listening.
+
+The symptom is deeply misleading: `dns.lookup` keeps working, so ordinary
+hostnames resolve fine while every SRV query dies with
+`querySrv ECONNREFUSED`, which reads like a dead cluster rather than a local
+misconfiguration. Verified directly — `Resolve-DnsName -Type SRV` returned all
+three shard hosts from Windows, while `dns.getServers()` inside Node returned
+`["127.0.0.1"]`.
+
+`ensureSrvResolverAvailable()` fires **only** when the process has no usable
+nameserver at all, and then points c-ares at 1.1.1.1/8.8.8.8 for that process
+with a loud warning. Because the guard requires a provably broken resolver it
+cannot mask a real DNS failure in production, and on the Hostinger target
+c-ares reads `/etc/resolv.conf` and the whole path is a no-op.
+
+**Decisions and why**
+
+- **Kept `mongodb+srv://` as canonical** rather than pasting the non-SRV
+  string that also connects. The SRV record is what lets Atlas move or rescale
+  shard hosts without a config change; hardcoding the three current hostnames
+  trades a permanent maintenance hazard for a local convenience.
+- **Repaired the resolver in the app path, not just the script.** Without it
+  `npm run dev` cannot reach the database on this machine, which blocks every
+  remaining phase — a dev-script-only fix would have looked green while the
+  app stayed broken.
+
+**Verified**
+
+- `npm run db:check` — connected in ~1.2s, ping ok, MongoDB **8.0.29**,
+  database `gamescentral`, no collections yet, insert + delete round-tripped.
+- Credentials and the Atlas IP allowlist both accept this machine.
+- `npm run lint` and `npx tsc --noEmit` clean.
+- **SmileOne blocker re-tested on the real Windows resolver and confirmed
+  genuine, not a sandbox artifact:** `frontsmie.smile.one` and
+  `sandbox.smile.one` both return "DNS name does not exist" while
+  `www.smile.one` resolves to 104.18.35.98 / 172.64.152.158. The Phase 2
+  blocker stands as written.
+
+**Open — needs the owner**
+
+- **Credentials are `root` / `root`.** Fine for wiring up; not fine for a
+  database that will hold real orders and customer contact details. Before
+  go-live: a strong generated password and a least-privilege user scoped to
+  `readWrite` on `gamescentral` only, plus a check that Network Access is not
+  left at `0.0.0.0/0`. Section 12.4 territory.
+
+**Next**
+
+- Phase 2 remains blocked on the SmileOne sandbox base URL.
+- Product/Order Mongoose schemas can now be built and indexed against a real
+  cluster.
+
+---
+
 ## 2026-08-15 — Phase 1.5: colour system, theme toggle, and motion
 
 Visual and interaction pass over the Phase 1 shell. No commerce, auth, or
