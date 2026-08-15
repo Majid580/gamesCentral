@@ -54,6 +54,12 @@ dark, add animation including scroll animation".
   caller's className now always wins. No `tailwind-merge` dependency needed.
 - Hover states written as hand-rolled CSS lacked Tailwind's implicit
   `@media (hover: hover)` gate and would stick after a tap on touch. Gated.
+- `suppressHydrationWarning` added to `<body>`. Browser extensions stamp
+  attributes onto it before React hydrates (ColorZilla's
+  `cz-shortcut-listen`, Grammarly's equivalents), each raising a mismatch
+  unrelated to our markup. Not caused by this work — the `<html>` suppression
+  for `data-theme` does not cascade — but a noisy dev console hides real
+  errors. Covers only that element's own attributes, not its children.
 
 **Decisions and why**
 

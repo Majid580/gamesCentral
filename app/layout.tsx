@@ -89,7 +89,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />
       </head>
-      <body className="flex min-h-full flex-col">{children}</body>
+      {/*
+        Browser extensions routinely stamp attributes onto <body> before React
+        hydrates — ColorZilla adds `cz-shortcut-listen`, Grammarly adds its
+        own — and each one raises a hydration mismatch that has nothing to do
+        with our markup. Suppressing here keeps the dev console meaningful, and
+        it only covers this element's own attributes, not its children.
+      */}
+      <body suppressHydrationWarning className="flex min-h-full flex-col">
+        {children}
+      </body>
     </html>
   );
 }
