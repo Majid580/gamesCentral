@@ -77,28 +77,75 @@ public/brand/   logos and brand assets
 
 All money is stored as **integer paisa**. Never floats (Section 12.13).
 
-**Product** — `smileOneProductId`, `game`, `displayName`, `diamondAmount`,
-`basePriceUsd`, `isActive`, `lastSyncedAt`
+Implemented in `lib/models/`. Each model is registered through
+`defineModel()`, which reuses an already-registered model instead of throwing
+`OverwriteModelError` when Next.js re-evaluates a module on hot reload.
 
-`game` is a first-class field from day one even though only Mobile Legends
-ships at launch; the UI filters rather than the schema assuming one title.
+**Game** (`game.ts`) — `slug`, `name`, `smileOneProduct`, `requiresZoneId`,
+`isActive`, `sortOrder`
+
+Games are first-class from day one even though only Mobile Legends ships at
+launch; the UI filters rather than the schema assuming one title. This
+collection also owns the per-game supplier knowledge that has nowhere else to
+live: the exact string SmileOne's `product` parameter expects, and whether
+checkout must collect a Zone ID.
+
+**Product** (`product.ts`) — `smileOneProductId` (unique), `game` (ref),
+`displayName`, `spu`, `diamondAmount`, `basePriceUsdCents`,
+`supplierRawPrice`, `isActive`, `sortOrder`, `lastSyncedAt`
+
 `displayName` is admin-curated — SmileOne's `spu` strings are inconsistent
 (`"mobilelegends BR 78 &8 Diamond"`) and are never shown to customers.
 
-**Order** — `orderId` (internal, unique), `productRef`, `playerId`, `zoneId`,
-`confirmedUsername`, `pricePkr` (integer paisa), `status`, `paymentReference`,
-`smileOneOrderId`, `contactEmail`, `contactPhone`, `statusHistory[]`
-(`{from, to, note, at}`), timestamps
+The brief names the price field `basePriceUsd`; it is stored as
+**integer cents** because a float base price would break rule 5 the moment it
+is multiplied by the exchange rate and markup. `supplierRawPrice` keeps the
+untouched supplier string so the brief's open question — whether SmileOne
+prices really are USD — stays answerable from stored data.
 
-**AdminUser** — `email`, `hashedPassword`, `role`, `lastLoginAt` (may be
-delegated to Auth.js)
+**Order** (`order.ts`) — `orderId` (unique, generated), `product` (ref),
+`game` (ref), `playerId`, `zoneId`, `confirmedUsername`, `pricePkr` (integer
+paisa), `pricing{}`, `status`, `statusHistory[]` (`{from, to, note, at}`),
+`paymentReference`, `smileOneOrderId`, `contactEmail`, `contactPhone`,
+timestamps
 
-**Config** — `markupPercentage`, `exchangeRate` (singleton)
+`pricing{}` snapshots the inputs that produced the total —
+`basePriceUsdCents`, `exchangeRate`, `markupPercentage`, and `getrole`'s
+`supplierChangePrice` when it overrode the catalogue price. The rate and
+markup are editable, so without the snapshot an order's total becomes
+unreproducible the first time either changes and a later dispute cannot be
+settled.
 
-**Indexes (minimum):** `Order.orderId` unique, `Order.status`,
-`Order.createdAt`, `Product.smileOneProductId`. Created explicitly via
-`syncIndexes` — the connection sets `autoIndex: false` so cold starts do not
-pay for index checks.
+`orderId` is CSPRNG-random (`GC-XXXXX-XXXXX`, ambiguous characters removed),
+not sequential: guest order lookup takes an order ID, and a predictable
+counter would let anyone walk the order book.
+
+**AdminUser** (`admin-user.ts`) — `email` (unique), `hashedPassword`
+(`select: false`), `role`, `isActive`, `lastLoginAt`. Provisioned
+out-of-band; there is no public route that writes to this collection.
+
+**AppConfig** (`app-config.ts`) — `markupPercentage`, `exchangeRate`,
+`ordersPaused`, `pausedMessage`, `updatedBy`. Singleton enforced by a unique
+index on a fixed `key`, not by convention.
+
+**Indexes.** Created explicitly by `npm run db:sync-indexes` — the connection
+sets `autoIndex: false` so cold starts never pay for index checks and index
+builds never land under production load. `syncIndexes()` also drops indexes no
+longer declared in a schema, which is what stops the models and the real
+collections drifting apart.
+
+| Collection | Indexes beyond `_id` |
+|---|---|
+| Game | `slug` (unique), `{isActive, sortOrder}` |
+| Product | `smileOneProductId` (unique), `{game, isActive, sortOrder, diamondAmount}`, `lastSyncedAt` |
+| Order | `orderId` (unique), `{status, createdAt}`, `createdAt`, `paymentReference` (sparse), `{contactEmail, createdAt}` |
+| AppConfig | `key` (unique) |
+| AdminUser | `email` (unique) |
+
+`{status, createdAt}` deliberately replaces a standalone `status` index — the
+compound serves status-only queries through its prefix, so a second index
+would be maintained on every write for nothing. `paymentReference` is sparse
+because it is null until checkout starts and those nulls must not collide.
 
 ### Order status machine
 
@@ -109,8 +156,16 @@ pending -> awaiting_payment -> paid -> fulfilling -> fulfilled
         -> failed
 ```
 
-Enforced in the service layer — only legal transitions are permitted. Every
-money-touching transition uses an atomic conditional update so concurrent
+Declared in `lib/models/order.ts` as `ORDER_TRANSITIONS` and enforced in the
+service layer via `canTransition()`. The permitted statuses and the permitted
+moves between them live in one file so they cannot drift apart.
+
+The load-bearing property is an absence: **once an order reaches `paid`,
+`failed` is unreachable.** After money changes hands the only sink for a
+problem is `paid_pending_fulfillment`. That is rule 8 — a payment must never
+be silently lost — expressed as a graph rather than a code review comment.
+
+Every money-touching transition uses an atomic conditional update so concurrent
 requests cannot double-process:
 
 ```ts

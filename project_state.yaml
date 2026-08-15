@@ -34,6 +34,11 @@ completed_features:
   - "MongoDB Atlas connected: DATABASE_URL set (db gamescentral), verified reachable + writable, server 8.0.29"
   - "npm run db:check (scripts/db-check.mts) — credential-redacting connectivity + write-access probe"
   - "lib/utils/dns-resolver.ts — guarded SRV resolver repair for Node's c-ares on DHCP-DNS Windows hosts"
+  - "Data model: Game, Product, Order, AdminUser, AppConfig schemas in lib/models/ (Section 11)"
+  - "Order status machine (ORDER_TRANSITIONS/canTransition) with no path from paid -> failed (rule 8)"
+  - "CSPRNG order-ID generator (GC-XXXXX-XXXXX, unambiguous alphabet, non-sequential)"
+  - "integerMoneyField validator — floats rejected at write time on every money field (rule 5)"
+  - "npm run db:sync-indexes — explicit index creation/drop as a deploy step; all 5 collections live on Atlas"
 
 in_progress_features: []
 
@@ -98,8 +103,9 @@ external_integrations:
     cluster: "cluster0.gbfasmm.mongodb.net (MongoDB 8.0.29)"
     database: "gamescentral"
     access: "connect + write verified via insert/delete round-trip"
-    collections: "none yet"
+    collections: "games, products, orders, adminusers, appconfigs (all empty; indexes synced)"
     verify_command: "npm run db:check"
+    index_command: "npm run db:sync-indexes"
     last_tested: "2026-08-15"
     security_debt: "credentials are root/root — see known_issues; must be rotated to a least-privilege user before go-live"
   smileone:
@@ -120,8 +126,8 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "Phase 2: SmileOne sign utility (double MD5), productlist sync into MongoDB, getrole"
-  - "Now unblocked by the live cluster: Product/Order Mongoose schemas + explicit index sync"
+  - "Pricing service: basePriceUsdCents * exchangeRate * (1 + markup) -> integer paisa. Unblocked; needs no supplier access."
+  - "Phase 2: productlist sync into the Product collection (schemas ready, still blocked on SmileOne base URL)"
   - "Collect from owner: real logo files, contact address/phone, markup % and USD->PKR rate"
   - "Confirm with owner: PayFast hosted-checkout mode + request field-level docs from the merchant dashboard (blocks Phase 5)"
   - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines Phase 11 deploy method"

@@ -5,6 +5,103 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Data model: five collections, indexed and verified on Atlas
+
+The live cluster unblocked the schemas. Section 11's data model is now
+implemented, indexed, and checked against the real database rather than
+assumed.
+
+**Built**
+
+- `lib/models/define-model.ts` — `defineModel()` reuses an already-registered
+  model instead of throwing `OverwriteModelError`, which Next.js hot reload
+  triggers constantly (modules re-evaluate; the `mongoose` singleton on
+  `globalThis` does not). Also `integerMoneyField()`, a reusable money field
+  whose validator makes a float a **write-time failure** rather than a drift
+  nobody notices until reconciliation.
+- **Game** — first-class from day one. Beyond display fields it owns the
+  per-game supplier knowledge with nowhere else to live: the exact string
+  SmileOne's `product` parameter expects, and whether checkout must collect a
+  Zone ID. Adding a second game must never need a migration.
+- **Product** — synced catalogue, admin-curated `displayName`, raw `spu`
+  retained for admin matching but never rendered.
+- **Order** — the money-touching one. Status machine, embedded
+  `statusHistory[]`, generated order ID, frozen pricing snapshot.
+- **AdminUser** — `hashedPassword` is `select: false` so an accidental
+  `findOne()` in an unrelated path cannot pull a credential hash into a
+  response payload.
+- **AppConfig** — pricing singleton, plus an `ordersPaused` kill switch so an
+  admin can stop taking money the moment SmileOne or PayFast misbehaves
+  instead of accruing unfulfillable orders.
+- `npm run db:sync-indexes` — explicit index creation as a deploy step.
+
+**Decisions and why**
+
+- **`basePriceUsd` is stored as `basePriceUsdCents`, deviating from the brief's
+  field name.** A float base price breaks rule 5 the moment it is multiplied
+  by the exchange rate and the markup, and that is precisely the value that
+  gets multiplied. `supplierRawPrice` keeps the untouched supplier string
+  alongside it, so the brief's own open question — whether SmileOne prices
+  really are USD — stays answerable from stored data instead of being lost at
+  parse time.
+- **The status machine has no route from `paid` to `failed`.** Rule 8 says a
+  payment must never be silently lost; encoding that as a missing edge makes
+  it structural rather than something a future reviewer has to remember.
+  `paid_pending_fulfillment` is the only sink after money changes hands.
+- **Order IDs are CSPRNG-random, not sequential.** Guest order lookup takes an
+  order ID, so a predictable counter would let anyone walk the order book.
+  Ambiguous characters (0/O/1/I/L) are excluded because these get read aloud
+  over WhatsApp and typed back by hand. `randomInt` avoids the modulo bias a
+  naive `randomBytes[i] % 31` would introduce.
+- **Orders snapshot their pricing inputs.** The rate and markup are editable
+  by design; without the snapshot an order's total becomes unreproducible the
+  first time either changes, and a dispute months later cannot be settled.
+- **Dropped the standalone `status` index** after seeing it in the first sync
+  output. The `{status, createdAt}` compound already serves status-only
+  queries through its prefix, so the second index was pure write cost.
+- **Models use relative `./x.ts` imports rather than the `@/` alias.** Node
+  cannot resolve tsconfig path aliases, and the standalone scripts must import
+  the models. `scripts/` already set this precedent, and `tsconfig.json`
+  already enables `allowImportingTsExtensions` for it. `db:sync-indexes` runs
+  under `--conditions=react-server` so the `server-only` marker resolves to
+  its empty stub instead of throwing.
+
+**Verified**
+
+- `npm run db:sync-indexes` against Atlas created all five collections and
+  their indexes; re-running after removing the redundant `status` index
+  reported `dropped: status_1`, confirming the drop path works too.
+- **31/31 schema invariants proved against the real database** with a
+  throwaway script, which then cleaned up after itself (final document counts
+  all zero). Covered: float and negative money rejected on both Order and
+  Product; every unique constraint (orderId, smileOneProductId, game slug,
+  admin email, config singleton); enum rejection for status and role;
+  `hashedPassword` hidden by default and readable via `.select("+…")`; email
+  lowercasing; order-ID format, alphabet, and 5000-way uniqueness; and all
+  seven status-machine assertions including `paid -> failed` blocked.
+- Models load in the **real Next.js runtime**, not merely compile: a temporary
+  route handler importing all five returned
+  `{"models":["Game","Product","Order","AppConfig","AdminUser"],"guard":false}`
+  where `guard` is `canTransition("paid","failed")`. Route deleted afterwards.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all clean.
+
+**Snag worth recording**
+
+The first build-check route was placed at `app/api/_buildcheck/`. Next.js
+treats a leading underscore as a **private folder** and excludes it from
+routing entirely, so it never got bundled and the build proved nothing —
+it silently passed. Renaming it revealed `ƒ /api/buildcheck` in the route
+table and gave a real answer.
+
+**Next**
+
+- Phase 2's productlist sync now has somewhere to write, but remains blocked
+  on the SmileOne sandbox base URL.
+- Pricing service (`basePriceUsdCents × exchangeRate × (1 + markup)` → integer
+  paisa) is unblocked and needs no supplier access.
+
+---
+
 ## 2026-08-15 — MongoDB Atlas connected; Node SRV resolver fault diagnosed
 
 The owner supplied the Atlas connection string, clearing the longest-standing
