@@ -61,6 +61,20 @@ dark, add animation including scroll animation".
   for `data-theme` does not cascade — but a noisy dev console hides real
   errors. Covers only that element's own attributes, not its children.
 
+- **The `#packages` CTAs only worked once per page load.** `next/link`
+  navigates the router instead of letting the browser perform a fragment
+  navigation. Once the URL already carried `#packages` that navigation was a
+  no-op, and since Link had already called `preventDefault()` the browser's
+  native scroll-to-fragment never ran either. Click "Choose a package", scroll
+  up, click again — nothing. Measured: click 1 → y=893, clicks 2 and 3 → y=0.
+  Fixed with `components/site/anchor-scroll.tsx`, one capture-phase listener
+  mounted in the site layout. Link bails out when `e.defaultPrevented` is set
+  (verified in `node_modules/next/dist/client/app-dir/link.js:336`), so
+  preventing there hands over the click cleanly. Chosen over converting seven
+  call sites to plain `<a>`, which would have cost prefetch and client-side
+  navigation on the cross-page links. Cross-page `/#packages` is left entirely
+  to the router and still lands correctly.
+
 **Decisions and why**
 
 - **No animation library.** GSAP + ScrollTrigger is ~40KB for what
