@@ -1,0 +1,66 @@
+project: Games Central
+last_updated: "2026-08-15"
+current_phase: "phase-1-static-shell"
+
+tech_stack:
+  frontend: "Next.js 16.3.1 App Router (Turbopack), React 19.2, Tailwind v4"
+  backend: "Next.js Route Handlers, layered route -> controller -> service -> model"
+  database: "MongoDB Atlas via Mongoose 9.9"
+  auth: "Auth.js / NextAuth (admin only; guest checkout for customers)"
+  hosting_preview: "Vercel"
+  hosting_production: "Hostinger"
+  validation: "zod 4"
+
+completed_features:
+  - "Phase 0: Next.js 16 scaffold with TypeScript, Tailwind v4, ESLint"
+  - "Phase 0: Section 17 folder structure (app/(site), app/admin, app/api, lib/*, components, public/brand)"
+  - "Phase 0: security headers + CSP baseline in next.config.ts (host-agnostic, not vercel.json)"
+  - "Phase 0: lazy-validated server-only env module (lib/env.ts, zod)"
+  - "Phase 0: pooled/cached Mongoose connection helper (lib/models/db.ts) + assertScalar NoSQL-injection guard"
+  - "Phase 0: .env.example, .gitignore hardened, CLAUDE.md + tracking docs"
+
+in_progress_features: []
+
+pending_features:
+  - "Phase 1: static shell — layout, home, legal pages"
+  - "Phase 2: SmileOne sandbox (sign util, productlist sync, getrole)"
+  - "Phase 3: product browsing UI"
+  - "Phase 4: checkout flow UI, payment stubbed"
+  - "Phase 5: PayFast sandbox hosted checkout"
+  - "Phase 6: real fulfillment via createorder + idempotency"
+  - "Phase 7: order confirmation + guest status lookup"
+  - "Phase 8: admin dashboard (Auth.js)"
+  - "Phase 9: code security hardening (claude-security)"
+  - "Phase 9.5: live pen test (strix-pentest)"
+  - "Phase 10: performance pass"
+  - "Phase 11: Hostinger production cutover"
+
+known_issues:
+  - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md."
+
+blockers:
+  - "DATABASE_URL: real MongoDB Atlas connection string not yet provided by owner."
+  - "PayFast: no merchant sandbox credentials yet, and hosted-checkout field-level docs still needed from the PayFast dashboard/account manager. Phase 5 cannot start without both."
+  - "Hostinger plan type (VPS vs Node.js shared hosting) unknown — determines the Phase 11 deploy method. Not blocking until Phase 11."
+  - "Brand assets: owner has dark/light logos as JPG. Need PNG/SVG with transparency before final polish. Not a launch blocker."
+
+external_integrations:
+  smileone:
+    status: "not-started"
+    env: "sandbox credentials available in brief, untested"
+    last_tested: null
+  payfast:
+    status: "blocked-on-credentials"
+    last_tested: null
+
+decisions:
+  architecture: "Single Next.js app (confirmed by owner) — no separate Express service."
+  admin_auth: "Auth.js / NextAuth (confirmed by owner)."
+  customer_accounts: "None in v1 — guest checkout + order lookup by order ID + email/phone (confirmed by owner)."
+  hosting: "Vercel for preview/testing only; production on Hostinger (owner decision, 2026-08-15). No Vercel-only primitives anywhere in the codebase."
+  payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
+
+next_steps:
+  - "Push initial commit to github.com/Majid580/gamesCentral"
+  - "Phase 1: base layout, header/footer, home page, and the Section 14 legal/contact pages"
+  - "Collect from owner: Atlas connection string, real logo files, contact address/phone for the Contact page"
