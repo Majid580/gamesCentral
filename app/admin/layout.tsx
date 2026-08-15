@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { signOut } from "@/auth";
+import { auth, signOut } from "@/auth";
 
 export const metadata: Metadata = {
   title: { default: "Admin", template: "%s · Games Central admin" },
@@ -16,12 +16,21 @@ export const metadata: Metadata = {
  * /admin/login, which must render while signed out. Authorisation lives in the
  * data functions each page calls, so a page cannot render customer data
  * without having passed a check.
+ *
+ * The header is rendered only when there IS a session. Otherwise the login
+ * page shows Dashboard/Orders links and a Sign out button to someone who is
+ * signed out — links that just bounce back to login, next to a control for
+ * ending a session that does not exist.
  */
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  const session = await auth();
+
   async function signOutAction() {
     "use server";
     await signOut({ redirectTo: "/admin/login" });
   }
+
+  if (!session?.user) return <div className="min-h-dvh">{children}</div>;
 
   return (
     <div className="min-h-dvh">

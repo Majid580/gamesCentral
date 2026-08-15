@@ -5,6 +5,74 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Admin login: field clearing, error reporting, signed-out chrome
+
+Owner reported that the login fields kept the previous credentials after
+signing in or out. Fixing it turned up two more problems behind it.
+
+**Field clearing (the reported bug)**
+
+Two things refill those boxes, neither of them our code: the browser's password
+manager autofills on arrival, and the inputs are uncontrolled, so when React
+reuses the same DOM nodes across a client-side navigation the typed values
+survive. On a shared terminal in a shop that means the next person sees the
+last operator's email and password.
+
+The form is now reset on submit, on mount, and on `pageshow` — the last one
+because a mount effect does not run when the browser restores a page from the
+back/forward cache. `autoComplete="off"` on the form and `new-password` on the
+password field discourage the manager, but browsers do not reliably honour
+that on credential fields, which is why the reset exists as well rather than
+instead. The submit-time reset runs in `requestAnimationFrame`, after React has
+serialised the FormData, so it cannot race the submission.
+
+Tradeoff, stated because it is a real one: autofill is off, so the generated
+password gets pasted from a password manager rather than filled.
+
+**Failed logins were silent**
+
+Found while testing the above. The error was being bounced through a
+`?error=` redirect that never carried the parameter, so a wrong password
+cleared the fields and said nothing at all. Now returned as action state via
+`useActionState` — no URL round trip, immediate feedback, and the button shows
+a pending state so the form cannot be double-submitted.
+
+**The admin header rendered on the login page**
+
+The real find, and it came from a broken test rather than from looking. The
+admin layout wraps `/admin/login` too, so a signed-out visitor saw Dashboard
+and Orders links plus a Sign out button — links that bounce straight back to
+login, beside a control for ending a session that does not exist. The layout
+now renders its chrome only when there is a session.
+
+**Worth recording: the test was wrong before the code was**
+
+Three rounds of "the error still doesn't show" were caused by
+`document.querySelector('form')` selecting the sign-out form in that header
+rather than the login form. Every conclusion drawn from it was wrong:
+`requestSubmit()` looked broken, the action looked like it never ran, and one
+"successful login" was a false positive from a session that was already
+active. The instrumentation that settled it rendered the action state into the
+page, because the server log turned out to be buffered and showed nothing.
+Lesson for next time: assert which element is being driven before drawing
+conclusions from what it does.
+
+**Verified** (production build, real browser, clicking the actual button)
+
+- Failed login → fields empty, error visible, `pending` observed transitioning
+  true → false with the error in state.
+- Successful login → navigates to `/admin`, header appears.
+- Sign out → back on `/admin/login`, both fields empty, header gone.
+- Login page carries exactly one form and no admin nav while signed out.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build` clean.
+
+**Note for the owner**
+
+An admin account exists under `your@email.com` — the example command was run
+verbatim. Create one with a real address and delete that one.
+
+---
+
 ## 2026-08-15 — Phase 8: admin area, auth and order recovery
 
 Auth.js v5 login, dashboard, order search, and manual recovery for orders
