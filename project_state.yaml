@@ -39,6 +39,12 @@ completed_features:
   - "CSPRNG order-ID generator (GC-XXXXX-XXXXX, unambiguous alphabet, non-sequential)"
   - "integerMoneyField validator — floats rejected at write time on every money field (rule 5)"
   - "npm run db:sync-indexes — explicit index creation/drop as a deploy step; all 5 collections live on Atlas"
+  - "Phase 3: real catalogue from owner's Catalogue.xlsx — 26 products (13 diamonds, 4 double, 4 passes, 5 combos)"
+  - "Phase 3: npm run db:seed — idempotent upsert on sku; removed products deactivate, never delete"
+  - "Phase 3: product kinds (diamonds/pass/combo/double_diamonds) with a per-kind card figure"
+  - "Phase 3: 3D 'stone' cards — dispersion-coloured slab depth (touch), pointer tilt + specular (fine pointer)"
+  - "Phase 3: storefront reads MongoDB via lib/services/catalogue.ts; placeholder catalogue deleted"
+  - "Phase 3: contrast measured on 112 text elements in both themes — zero failures"
 
 in_progress_features: []
 
@@ -59,7 +65,22 @@ known_issues:
   - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md. NOTE: the pre-paint theme script in app/layout.tsx needs that nonce when this lands."
   - "The pre-paint theme script triggers a React dev-only console warning about script tags in a component tree. Intentional: next/script's beforeInteractive replays inline code after the framework chunks and would reintroduce a theme flash. Do not 'fix' it — see the comment in app/layout.tsx."
   - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
-  - "Home page renders lib/placeholder-catalogue.ts behind a visible 'preview build' notice. Prices are illustrative and MUST NOT ship publicly — Phase 3 deletes that module."
+  - |
+    Pointer tilt / specular on the product cards has never been observed. The
+    Browser pane stayed hidden all session, so the page never composites,
+    requestAnimationFrame never fires, and screenshots time out. Same root
+    cause as the unobserved scroll reveal. CSS computes correctly (slab shadow
+    and 3D matrix both read back) but the motion is unwatched. Confirm in a
+    real browser.
+  - |
+    Site chrome still uses `transition-colors` on themed colours in
+    nav-links.tsx, site-footer.tsx, mobile-nav.tsx and theme-toggle.tsx. A CSS
+    transition captures the computed colour and does not re-run when the
+    underlying custom property changes, so an element mid/post-transition when
+    the theme flips can keep the previous theme's colour. Proven on the product
+    card's Select label (2.49:1 in light mode) and fixed there. The theme
+    toggle is the highest-risk remaining case since it is hovered at the exact
+    moment the theme changes. Not yet fixed — out of scope for Phase 3.
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
   - |
     ATLAS CREDENTIALS ARE root/root — GO-LIVE BLOCKER, NOT A DEV BLOCKER.
@@ -119,6 +140,13 @@ external_integrations:
     last_tested: null
 
 decisions:
+  pricing: |
+    Prices are OWNER-SET FINAL RETAIL PKR, not computed (owner, 2026-08-15).
+    Catalogue.xlsx gives rupee prices that already include the owner's margin,
+    so Product.pricePkr is authoritative and no exchange-rate/markup maths runs
+    on it. The formula stays in AppConfig for any future supplier-rate-priced
+    product. Rule 1 is unaffected: price still comes from our DB server-side
+    and is never accepted from the client.
   architecture: "Single Next.js app (confirmed by owner) — no separate Express service."
   admin_auth: "Auth.js / NextAuth (confirmed by owner)."
   customer_accounts: "None in v1 — guest checkout + order lookup by order ID + email/phone (confirmed by owner)."
@@ -126,7 +154,8 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "Pricing service: basePriceUsdCents * exchangeRate * (1 + markup) -> integer paisa. Unblocked; needs no supplier access."
+  - "Phase 4: checkout flow — the storefront selection bar is wired and waiting for it (Continue is deliberately disabled)"
+  - "Map each of the 26 products to its SmileOne productid once the sandbox base URL exists"
   - "Phase 2: productlist sync into the Product collection (schemas ready, still blocked on SmileOne base URL)"
   - "Collect from owner: real logo files, contact address/phone, markup % and USD->PKR rate"
   - "Confirm with owner: PayFast hosted-checkout mode + request field-level docs from the merchant dashboard (blocks Phase 5)"

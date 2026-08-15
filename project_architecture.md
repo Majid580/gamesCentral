@@ -90,18 +90,34 @@ collection also owns the per-game supplier knowledge that has nowhere else to
 live: the exact string SmileOne's `product` parameter expects, and whether
 checkout must collect a Zone ID.
 
-**Product** (`product.ts`) — `smileOneProductId` (unique), `game` (ref),
-`displayName`, `spu`, `diamondAmount`, `basePriceUsdCents`,
-`supplierRawPrice`, `isActive`, `sortOrder`, `lastSyncedAt`
+**Product** (`product.ts`) — `sku` (unique), `kind`, `game` (ref),
+`displayName`, `tagline`, `diamondAmount`, `bonusDiamonds`, `pricePkr`,
+`featured`, `isActive`, `sortOrder`, plus optional supplier fields
+(`smileOneProductId`, `spu`, `basePriceUsdCents`, `supplierRawPrice`,
+`lastSyncedAt`)
+
+`kind` is one of `diamonds | pass | combo | double_diamonds`. These are
+genuinely different products rather than one product with a flag: a pass has
+no diamond count at all, a combo bundles several items, and for a
+double-diamond offer the *bonus* is the headline. The card UI renders a
+different figure per kind. `bonusDiamonds` is stored separately from
+`diamondAmount` — "50+50" is 50 paid plus 50 free, delivering 100 — because
+the bonus is the offer and the card has to be able to say so.
+
+`sku` is the catalogue's natural key (`ml-dia-86`). The seed upserts on it, so
+re-running after the owner renames a product updates that product rather than
+creating a second one.
 
 `displayName` is admin-curated — SmileOne's `spu` strings are inconsistent
 (`"mobilelegends BR 78 &8 Diamond"`) and are never shown to customers.
 
-The brief names the price field `basePriceUsd`; it is stored as
-**integer cents** because a float base price would break rule 5 the moment it
-is multiplied by the exchange rate and markup. `supplierRawPrice` keeps the
-untouched supplier string so the brief's open question — whether SmileOne
-prices really are USD — stays answerable from stored data.
+`smileOneProductId` is optional and carries a **partial** unique index, not a
+sparse one. The owner's catalogue is authored ahead of the supplier mapping
+and passes/combos may never map to a single SmileOne SKU, so most rows hold an
+explicit `null`. A sparse index only skips *missing* fields, so it would still
+have indexed every explicit null and rejected the second unmapped product;
+`partialFilterExpression: { smileOneProductId: { $type: "string" } }` is the
+construct that actually means "unique among the ones that have it".
 
 **Order** (`order.ts`) — `orderId` (unique, generated), `product` (ref),
 `game` (ref), `playerId`, `zoneId`, `confirmedUsername`, `pricePkr` (integer
@@ -137,7 +153,7 @@ collections drifting apart.
 | Collection | Indexes beyond `_id` |
 |---|---|
 | Game | `slug` (unique), `{isActive, sortOrder}` |
-| Product | `smileOneProductId` (unique), `{game, isActive, sortOrder, diamondAmount}`, `lastSyncedAt` |
+| Product | `sku` (unique), `smileOneProductId` (unique, partial), `{game, isActive, kind, sortOrder}`, `lastSyncedAt` |
 | Order | `orderId` (unique), `{status, createdAt}`, `createdAt`, `paymentReference` (sparse), `{contactEmail, createdAt}` |
 | AppConfig | `key` (unique) |
 | AdminUser | `email` (unique) |
@@ -215,14 +231,29 @@ dashboard docs.
 
 ## 6. Pricing
 
+**Prices are owner-set retail PKR, not computed** (owner decision, 2026-08-15).
+The catalogue in `Catalogue.xlsx` gives final rupee prices that already include
+the owner's margin, so `Product.pricePkr` is authoritative and is stored as
+integer paisa. Nothing multiplies it by an exchange rate or a markup.
+
+The original formula is retained in `AppConfig` for any future product priced
+off a live supplier rate, but no current product uses it:
+
 ```
 price_pkr = round(base_price_usd * exchange_rate * (1 + markup_percentage/100))
 ```
 
-Computed server-side, always, from our own data. `exchange_rate` and
-`markup_percentage` are configurable (env default, overridable via the `Config`
-document) — never hardcoded, never in frontend code. The client displays
-prices; it never sets them.
+Non-negotiable rule 1 is unaffected and still governs: the price always comes
+from our own database, server-side, and is never accepted from the client. The
+storefront displays `pricePkr`; checkout re-reads it rather than trusting what
+was rendered. `Product.basePriceUsdCents` and `supplierRawPrice` are optional
+supplier reference data for margin auditing — never inputs to what a customer
+is charged.
+
+The storefront page uses ISR (`revalidate = 60`) rather than static
+prerendering, so an owner's price edit appears within a minute without a
+redeploy, and Atlas is not queried on every page view. A briefly stale
+displayed price cannot cause a wrong charge, because checkout re-reads it.
 
 ## 7. Security architecture
 

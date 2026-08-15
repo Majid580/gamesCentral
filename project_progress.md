@@ -5,6 +5,158 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-15 — Real catalogue live: 26 products, 3D storefront cards
+
+The owner supplied `Catalogue.xlsx` (OneDrive) with the real Mobile Legends
+pricing. Read it, seeded it, and built the storefront on top of it. The
+placeholder catalogue is deleted.
+
+**Reading the sheet** — the share link needed a real browser session; the
+legacy `api.onedrive.com` shares endpoint now 401s and the file is
+SharePoint-backed. Fetched it in-page with the session's own cookies, then
+parsed the xlsx **as a ZIP inside the browser** (central directory walk +
+`DecompressionStream('deflate-raw')`) to pull just `sheet2.xml` and
+`sharedStrings.xml`. The file is 3.2 MB but the actual data is under 20 KB —
+the rest is product imagery — so extracting two entries beat piping megabytes
+of base64 through the JS bridge. The owner's screenshots then confirmed the
+transcription independently.
+
+**Pricing model changed — the significant decision.** The sheet gives **final
+retail PKR already including the owner's margin**, so the
+`basePriceUsd × exchangeRate × (1 + markup)` pipeline is not used: `pricePkr`
+is authoritative and owner-set. The formula stays in `AppConfig` for any
+future product priced off a live supplier rate. Rule 1 is untouched — the
+price still comes from our database server-side and is never accepted from the
+client, and checkout will re-read it rather than trust the rendered value.
+
+**Built**
+
+- `lib/catalogue-source.ts` — the transcription, reviewable as a diff when a
+  price changes. Whole rupees in the source, converted to integer paisa
+  exactly once at seed time.
+- `npm run db:seed` — idempotent upsert on `sku`, so re-running after a rename
+  updates in place. Products dropped from the source are **deactivated, never
+  deleted**, because orders reference products and history must stay readable.
+- Product schema gained `kind` (`diamonds | pass | combo | double_diamonds`),
+  `sku`, `tagline`, `bonusDiamonds`, `featured`, and an authoritative
+  `pricePkr`. `diamondAmount` became optional — a pass has no diamond count.
+- `lib/services/catalogue.ts` — narrows Mongoose documents to exactly the
+  fields the UI needs (rule 7).
+- `components/store/product-card.tsx` + `catalogue.tsx` — the storefront.
+- Home page reads MongoDB; `lib/placeholder-catalogue.ts` and the old
+  `package-card.tsx` are gone.
+
+**The card design**
+
+The site's thesis is a cut gem, so a product card is a slab with real
+thickness rather than a rectangle with a shadow. Two layers, and which you get
+depends on the device:
+
+- **Thickness** — a hard, un-blurred box-shadow in the card's dispersion
+  colour under the bottom edge. This is the mobile-first half: a touch screen
+  has no hover, so the card must already read as three-dimensional before
+  anyone touches it. Pressing sinks it and shortens the slab, like a real key
+  travelling.
+- **Specular + tilt** — pointer-tracked highlight, gated behind
+  `hover: hover and pointer: fine`, because on touch a tilt sticks after a tap
+  and reads as broken.
+
+The tilt runs on **one delegated pointermove for the whole grid**, writing CSS
+custom properties directly onto the hovered card. Routing that through React
+state would re-render 26 cards per frame to move a highlight.
+
+Each kind leads with what actually distinguishes it: diamonds lead with the
+count, double-diamond offers lead with the total and state the bonus in words
+("Pay for 250, get 250 free") rather than leaving the customer to decode
+"250+250", and passes and combos lead with their name because they have no
+meaningful number.
+
+**Decisions and why**
+
+- **Cards are `<button aria-pressed>`, not clickable divs.** Choosing a
+  package is a toggle: it must be keyboard-reachable and announce its state.
+  Each carries one visually-hidden sentence ("86 diamonds, Rs 380") because
+  the visual card splits its meaning across a number, a badge, and a footer
+  that make no sense read in sequence.
+- **Selection bar is anchored to the bottom of the viewport** — the site is
+  used mostly on phones, the thumb is already there, and by the time someone
+  is ready to continue the chosen card has scrolled away.
+- **`Continue` is disabled rather than linked.** Checkout is the next build
+  step; a dead-end link would be worse than an honest unavailable state.
+- **ISR (`revalidate = 60`) rather than static.** The build initially
+  prerendered the catalogue into the HTML, which would freeze prices until the
+  next deploy. Per-request rendering would instead hit Atlas on every page
+  view and risk the shared-tier connection cap.
+
+**Three real bugs found by measuring, not by looking**
+
+1. **The SRV fix from earlier today was wrong.** `dns.setServers()` only
+   repairs the default resolver if it runs before anything else in the process
+   touches DNS. That holds in a script; it does not in the Next.js dev server,
+   which resolves hostnames during boot — so the home page failed with
+   `querySrv ECONNREFUSED` while the process resolvers already read
+   `["1.1.1.1","8.8.8.8"]`. Proved a fresh `Resolver` instance pointed at the
+   same server returned all three shard records in that same process.
+   Replaced with `resolveMongoUri()`, which does the SRV+TXT lookup on a
+   private resolver and rewrites the URI to its non-SRV equivalent —
+   order-independent and touching no global state. It appends `tls=true`
+   because `mongodb+srv://` implies TLS and `mongodb://` does not; dropping it
+   would have silently downgraded the connection to plaintext.
+2. **`sparse: true` did not do what it looks like it does.** A sparse index
+   skips documents where the field is *missing*, but the schema defaults
+   `smileOneProductId` to an explicit `null`, so the second unmapped product
+   collided on `null`. Needed a partial index keyed on `$type: "string"`.
+3. **`transition-colors` held a stale colour across a theme switch.** The
+   "Select" label kept the dark theme's `#a5a1bd` on a white card after
+   switching to light — 2.49:1 against a 4.5:1 requirement, on all 26 cards.
+   A CSS transition captures the computed colour and does not re-run when the
+   underlying custom property changes. Removing the transition fixed it; it
+   was animating a colour change that accompanies a text change and so
+   carried no meaning anyway.
+
+**Verified**
+
+- All 26 products seeded at the owner's exact prices; `db:seed` re-run is
+  clean (25 created / 1 updated on the second pass, 0 retired).
+- Storefront renders from MongoDB: 26 cards across 4 sections in the correct
+  order, real `<button>` elements, accessible names reading "86 diamonds,
+  Rs 380".
+- **Contrast measured on 112 text elements in both themes: zero failures.**
+- Responsive at 375 / 768 / 1440 → 2 / 3 / 4 columns, no page overflow at any
+  width. Caught and fixed inner overflow at 375px, where four-digit counts
+  (1050+) pushed the "diamonds" unit 10px past the card edge and
+  `overflow-hidden` clipped the word.
+- Touch: tap selects, sticky bar appears, no target under 44×44px.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build` clean; `/` reports
+  `Revalidate 1m`.
+
+**Not verified — carrying forward**
+
+The pointer tilt and specular could not be observed: the Browser pane stayed
+hidden all session, which means it never composites, so `requestAnimationFrame`
+never fires and screenshots time out. The same limitation that left scroll
+reveal unobserved. The code path is correct and the CSS computes (the slab
+shadow and 3D matrix were both read back), but the motion itself is unwatched.
+Confirm in a real browser.
+
+**Open — needs the owner**
+
+- Two catalogue items share PKR 1,150 (`1 Pass + 150 Diamonds` and
+  `2 Passes + 50 Diamonds`). Owner has confirmed these are intentionally
+  separate products at the same price.
+- 344 diamonds costs more per diamond (4.42) than 257 (4.28); same at 514 vs
+  600. Mirrors SmileOne's own tier structure, but customers do notice.
+- The sheet's "Homepage" tab asks for the product section to be "exactly the
+  same as" firushop.com.ar. Built to work the same way in Games Central's own
+  visual language rather than reproducing another shop's page.
+
+**Next**
+
+- Checkout flow (Phase 4) — the selection bar is wired and waiting for it.
+- Mapping each product to its SmileOne `productid` once the sandbox URL exists.
+
+---
+
 ## 2026-08-15 — Data model: five collections, indexed and verified on Atlas
 
 The live cluster unblocked the schemas. Section 11's data model is now

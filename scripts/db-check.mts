@@ -11,7 +11,7 @@
 
 import mongoose from "mongoose";
 
-import { ensureSrvResolverAvailable } from "../lib/utils/dns-resolver.ts";
+import { resolveMongoUri } from "../lib/utils/dns-resolver.ts";
 
 const uri = process.env.DATABASE_URL;
 
@@ -30,9 +30,9 @@ const started = Date.now();
 try {
   console.log(`Connecting to ${redact(uri)} ...`);
 
-  if (uri.startsWith("mongodb+srv://")) ensureSrvResolverAvailable();
+  const dialable = await resolveMongoUri(uri);
 
-  await mongoose.connect(uri, {
+  await mongoose.connect(dialable, {
     bufferCommands: false,
     maxPoolSize: 10,
     minPoolSize: 0,

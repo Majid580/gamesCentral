@@ -20,7 +20,7 @@
 
 import mongoose from "mongoose";
 
-import { ensureSrvResolverAvailable } from "../lib/utils/dns-resolver.ts";
+import { resolveMongoUri } from "../lib/utils/dns-resolver.ts";
 import { AdminUserModel } from "../lib/models/admin-user.ts";
 import { AppConfigModel } from "../lib/models/app-config.ts";
 import { GameModel } from "../lib/models/game.ts";
@@ -37,9 +37,9 @@ if (!uri) {
 const models = [GameModel, ProductModel, OrderModel, AppConfigModel, AdminUserModel];
 
 try {
-  if (uri.startsWith("mongodb+srv://")) ensureSrvResolverAvailable();
+  const dialable = await resolveMongoUri(uri);
 
-  await mongoose.connect(uri, {
+  await mongoose.connect(dialable, {
     bufferCommands: false,
     serverSelectionTimeoutMS: 10_000,
     autoIndex: false,

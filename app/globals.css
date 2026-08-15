@@ -410,6 +410,114 @@
   }
 }
 
+@layer components {
+  /*
+   * THE STONE CARD — the storefront's signature surface.
+   *
+   * The site's whole visual thesis is a cut gem, so a product card is not a
+   * rectangle with a shadow: it is a slab with real thickness that catches
+   * light. Two independent layers build that, and which one you get depends on
+   * what your device can actually do.
+   *
+   * 1. THICKNESS (every device, no interaction required). A hard, un-blurred
+   *    box-shadow in the card's own dispersion colour sits under the bottom
+   *    edge, reading as the depth of a physical tile. This matters because the
+   *    site is mobile-first and a touch screen has no hover: the card must
+   *    already look three-dimensional before anyone touches it. Pressing it
+   *    sinks the card into the page and shortens the slab, the way a real key
+   *    travels.
+   *
+   * 2. SPECULAR (fine pointers only). A soft highlight tracks the cursor
+   *    across the face while the card tilts toward it, so light appears to
+   *    move over the stone. Gated behind `hover: hover and pointer: fine`
+   *    because on a touch device a tilt would stick after a tap and read as
+   *    broken.
+   *
+   * --tilt-x/--tilt-y/--px/--py are written by components/store/catalogue.tsx
+   * on one delegated pointermove for the whole grid, never through React
+   * state, so a 26-card grid does no re-rendering while the pointer moves.
+   */
+  .stone {
+    --tilt-x: 0deg;
+    --tilt-y: 0deg;
+    --lift: 0px;
+    --slab: 5px;
+
+    position: relative;
+    isolation: isolate;
+    transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y))
+      translate3d(0, var(--lift), 0);
+    box-shadow:
+      0 var(--slab) 0 -1px color-mix(in oklab, var(--card-tone) 30%, var(--card)),
+      var(--shadow-card);
+    transition:
+      transform 450ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 300ms ease-out,
+      border-color 200ms ease-out;
+  }
+
+  /* The moving highlight. ::before is taken by .facet-edge's hairline. */
+  .stone::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 300ms ease-out;
+    background: radial-gradient(
+      14rem 14rem at var(--px, 50%) var(--py, 0%),
+      color-mix(in oklab, var(--card-tone) 34%, transparent),
+      transparent 62%
+    );
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .stone:hover,
+    .stone:focus-visible {
+      --lift: -3px;
+      --slab: 8px;
+      box-shadow:
+        0 var(--slab) 0 -1px color-mix(in oklab, var(--card-tone) 42%, var(--card)),
+        var(--shadow-raised);
+    }
+
+    .stone:hover::after,
+    .stone:focus-visible::after {
+      opacity: 1;
+    }
+  }
+
+  /* Press travel. Applies on touch and pointer alike — this is the feedback a
+     tap gets, and it is the only interaction feedback a touch device gets. */
+  .stone:active {
+    --lift: 3px;
+    --slab: 2px;
+    --tilt-x: 0deg;
+    --tilt-y: 0deg;
+    transition-duration: 110ms;
+  }
+
+  /* The chosen card holds the raised state rather than relying on colour
+     alone, so selection survives both themes and colour-blindness. */
+  .stone[aria-pressed="true"] {
+    --slab: 8px;
+    border-color: color-mix(in oklab, var(--card-tone) 60%, var(--border));
+  }
+
+  .stone[aria-pressed="true"]::after {
+    opacity: 0.65;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Keep the thickness — it is depth, not motion — but stop the card moving. */
+    .stone {
+      transform: none;
+    }
+  }
+}
+
 @layer utilities {
   /*
    * The diamond motif. Mobile Legends diamonds are faceted, so featured

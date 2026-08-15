@@ -1,11 +1,29 @@
 import type { CSSProperties } from "react";
 
-import { PackageCard, DiamondGlyph } from "@/components/store/package-card";
+import { Catalogue } from "@/components/store/catalogue";
+import { DiamondGlyph } from "@/components/store/diamond-glyph";
 import { ButtonLink } from "@/components/ui/button";
-import { PLACEHOLDER_PACKAGES } from "@/lib/placeholder-catalogue";
+import { getStorefront } from "@/lib/services/catalogue";
 import { siteConfig } from "@/lib/site-config";
 
-export default function HomePage() {
+/**
+ * Regenerate at most once a minute.
+ *
+ * Without this the page prerenders at build time and the catalogue is frozen
+ * into the HTML — the owner could change a price and never see it until the
+ * next deploy. Rendering per request instead would hit Atlas on every page
+ * view, which is wasteful for a catalogue that changes a few times a month and
+ * risks the connection cap on a shared tier.
+ *
+ * A price can therefore be up to 60s stale on screen. That cannot cause a
+ * wrong charge: rule 1 means checkout re-reads the price from the database
+ * server-side, so a stale display price is caught there rather than honoured.
+ */
+export const revalidate = 60;
+
+export default async function HomePage() {
+  const storefront = await getStorefront("mobile-legends");
+
   return (
     <>
       {/* ---------------------------------------------------------------- */}
@@ -135,42 +153,34 @@ export default function HomePage() {
           <div data-reveal>
             <Eyebrow tone={2}>Catalogue</Eyebrow>
             <h2 className="mt-3 font-display text-3xl font-bold sm:text-4xl">
-              Diamond packages
+              {storefront ? storefront.gameName : "Catalogue"}
             </h2>
             <p className="mt-3 max-w-lg text-muted-foreground">
-              Pick a tier, enter your Player ID and Zone ID, and confirm your
-              in-game name before you pay.
+              Every price is in PKR, all-in — what you see is what you pay. Pick
+              a package, then confirm your in-game name before anything is
+              charged.
             </p>
           </div>
 
-          {/*
-            TODO(phase-3): replace PLACEHOLDER_PACKAGES with the synced,
-            admin-curated catalogue from MongoDB. Prices below are illustrative
-            layout data only — they are NOT real and must not ship publicly.
-          */}
-          <p
-            role="status"
-            data-reveal
-            className="mt-8 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground"
-          >
-            <strong className="font-semibold">Preview build.</strong> These
-            packages and prices are placeholder layout data. The live catalogue
-            syncs from our supplier in a later build step.
-          </p>
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {PLACEHOLDER_PACKAGES.map((pkg, i) => (
-              // The reveal wrapper keeps PackageCard purely presentational —
-              // stagger is a page-layout concern, not a product-card one.
-              // Stagger by column so a row arrives as one wave, not a queue.
-              <div
-                key={pkg.id}
-                data-reveal
-                style={{ "--reveal-i": i % 4 } as CSSProperties}
+          <div className="mt-10">
+            {storefront ? (
+              <Catalogue sections={storefront.sections} />
+            ) : (
+              /*
+               * Shown when the catalogue cannot be read — an empty database or
+               * a database that is down. Saying so plainly beats rendering an
+               * empty grid that looks like we simply sell nothing.
+               */
+              <p
+                role="status"
+                className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm"
               >
-                <PackageCard {...pkg} tone={i} className="h-full" />
-              </div>
-            ))}
+                <strong className="font-semibold">
+                  The catalogue is temporarily unavailable.
+                </strong>{" "}
+                Please try again in a few minutes — no order has been affected.
+              </p>
+            )}
           </div>
         </div>
       </section>

@@ -3,7 +3,7 @@ import "server-only";
 import mongoose from "mongoose";
 
 import { requireEnv } from "@/lib/env";
-import { ensureSrvResolverAvailable } from "@/lib/utils/dns-resolver";
+import { resolveMongoUri } from "@/lib/utils/dns-resolver";
 
 /**
  * Pooled Mongoose connection, cached on the global object.
@@ -39,24 +39,23 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
   if (!cache.promise) {
     const uri = requireEnv("DATABASE_URL");
 
-    // `mongodb+srv://` resolves an SRV record before it can reach a node, and
-    // that lookup bypasses the OS resolver. No-op unless this process has no
-    // working nameserver at all.
-    if (uri.startsWith("mongodb+srv://")) ensureSrvResolverAvailable();
-
-    cache.promise = mongoose.connect(uri, {
-      // Fail fast instead of silently queueing operations when the pool is
-      // down — a hung checkout is worse than a clear error.
-      bufferCommands: false,
-      // Atlas free/shared tiers cap connections; 10 per process is ample for
-      // this workload and leaves headroom for concurrent serverless instances.
-      maxPoolSize: 10,
-      minPoolSize: 0,
-      serverSelectionTimeoutMS: 5_000,
-      // Indexes are created explicitly via `syncIndexes` in tooling, not
-      // implicitly on every cold start.
-      autoIndex: false,
-    });
+    // `mongodb+srv://` needs an SRV lookup that bypasses the OS resolver.
+    // Returns the URI untouched wherever that works — see the module comment.
+    cache.promise = resolveMongoUri(uri).then((dialable) =>
+      mongoose.connect(dialable, {
+        // Fail fast instead of silently queueing operations when the pool is
+        // down — a hung checkout is worse than a clear error.
+        bufferCommands: false,
+        // Atlas free/shared tiers cap connections; 10 per process is ample for
+        // this workload and leaves headroom for concurrent serverless instances.
+        maxPoolSize: 10,
+        minPoolSize: 0,
+        serverSelectionTimeoutMS: 5_000,
+        // Indexes are created explicitly via `syncIndexes` in tooling, not
+        // implicitly on every cold start.
+        autoIndex: false,
+      }),
+    );
   }
 
   try {
