@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json(
-      { error: result.error, field: result.field },
+      { error: result.error, fields: result.fields },
       { status: result.status },
     );
   }

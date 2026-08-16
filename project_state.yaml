@@ -70,9 +70,12 @@ completed_features:
   - "Phase 2: LIVE_ACCOUNT_SAFETY.md + CLAUDE.md banner — the no-test-deliveries rule is loaded into every session automatically"
   - "Phase 2: npm run smileone:probe (scripts/smileone-check.mts) — read-only probe that asserts the delivery gate blocks createorder before sending anything"
   - "Phase 2: response envelope confirmed {status, message, data}; non-200 status in an HTTP 200 body now throws with the upstream message instead of a shape mismatch"
+  - "Phase 2: getrole VERIFIED LIVE — owner's account 1638539586/16932 returned username 'proplayer123', confirmed correct by the owner (2026-08-16)"
+  - "Phase 2: not-found confirmed as HTTP 200 + status 20003; mapped to AccountNotFoundError so a typo reads 'No player found…' instead of a 503 outage message"
+  - "Phase 4: checkout account lookup is now REAL end-to-end in the browser — right IDs show the in-game name, wrong IDs show the not-found message with both inputs flagged"
+  - "Phase 4: controller error shape is fields[] not field — a wrong Player ID and a wrong Zone ID are indistinguishable upstream, so both are marked"
 
-in_progress_features:
-  - "Phase 2: getrole player-name lookup — wired, gated, and unrun. Needs a real Player ID + Zone ID from the owner."
+in_progress_features: []
 
 pending_features:
   - "Phase 2: productlist sync into the Product collection — blocked on the SKU/region mapping question below"
@@ -95,12 +98,25 @@ known_issues:
     Enforced by lib/services/smileone/safety.ts. Do not remove that gate and do
     not set SMILEONE_ALLOW_FULFILMENT. Full rules in LIVE_ACCOUNT_SAFETY.md.
   - |
-    getrole's NOT-FOUND response shape is unconfirmed, so verifyGameAccount
-    cannot yet tell "wrong Player ID" (tell the customer to check their input)
-    apart from "supplier is down" (do not). Today a non-200 upstream status
-    throws SmileOneError, which the controller maps to a 503 "can't reach the
-    game servers" — wrong copy for a typo'd ID. Confirm the real shape with one
-    deliberately invalid ID during the getrole test, then map it properly.
+    /api/checkout/verify-account IS UNRATE-LIMITED AND PROXIES THE SUPPLIER.
+    Every call hits the owner's real SmileOne account. It cannot spend money —
+    getrole only reads — but an unthrottled public endpoint fronting a partner
+    API invites the supplier to throttle or suspend the merchant account, which
+    would take the whole storefront down. The MongoDB TTL rate-limit pattern
+    from admin login (lib/models/login-attempt.ts) applies directly. Do this
+    before go-live, not in Phase 9 cleanup.
+  - |
+    getrole's `zone` is NOT the Zone ID that was sent — a lookup on zone 16932
+    returned `zone: 1`. Meaning unknown. The checkout UI shows the customer's
+    typed Zone ID, not this, and it must stay that way. Do not "fix" the UI to
+    display role.zone.
+  - |
+    getrole returns an undocumented `id_change_price_info`: a per-product
+    [{product_id, change_price}] array (observed: all 1 except product 25 at
+    1.0043 — they read as multipliers, not prices). Phase 6 needs to decide
+    how this interacts with the top-level change_price before computing any
+    final charge. It also listed product_id 20340, which is NOT in the
+    productlist response — another sign the catalogue mapping is not settled.
   - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md. NOTE: the pre-paint theme script in app/layout.tsx needs that nonce when this lands."
   - "The pre-paint theme script triggers a React dev-only console warning about script tags in a component tree. Intentional: next/script's beforeInteractive replays inline code after the framework chunks and would reintroduce a theme flash. Do not 'fix' it — see the comment in app/layout.tsx."
   - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
@@ -155,12 +171,6 @@ known_issues:
 
 blockers:
   - |
-    NEEDED FROM OWNER: a real Mobile Legends Player ID + Zone ID to test the
-    getrole name lookup with. It is the last step of the current task and the
-    only one that cannot be done without them. getrole only reads — it delivers
-    nothing — but a made-up ID either returns nothing or looks up a stranger.
-    Run: npm run smileone:probe -- mobilelegends <playerId> <zoneId>
-  - |
     SUPPLIER CATALOGUE DOES NOT MATCH OURS — blocks Phase 6 fulfilment.
     product=mobilelegends returns 16 products, all Brazil-region ("mobilelegends
     BR 55 Diamond", "Passagem do crepúsculo") priced in what look like BRL. The
@@ -200,10 +210,10 @@ external_integrations:
     base_url: "https://www.smile.one (production; no sandbox host exists)"
     signing: "CONFIRMED against the live API — a wrong double-MD5 signature would have been rejected"
     productlist: "verified — HTTP 200, 16 Brazil-region products, envelope {status, message, data:{product[]}}"
-    getrole: "wired and gated; UNRUN — needs a real Player ID + Zone ID from the owner"
+    getrole: "VERIFIED LIVE — returns the correct in-game username; not-found is HTTP 200 + status 20003, identical for a wrong Player ID and a wrong Zone ID"
     createorder: "BLOCKED IN CODE by lib/services/smileone/safety.ts. No test deliveries until PayFast is wired AND the owner lifts the gate in person."
     verify_command: "npm run smileone:probe"
-    last_tested: "2026-08-16 (signing + productlist live; nothing delivered)"
+    last_tested: "2026-08-16 (signing + productlist + getrole live, in the script AND through the checkout UI; nothing delivered)"
   payfast:
     status: "blocked-on-credentials"
     last_tested: null
@@ -223,7 +233,7 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "Run the getrole name lookup with a real Player ID + Zone ID from the owner: npm run smileone:probe -- mobilelegends <playerId> <zoneId>. Read-only. Then repeat with a deliberately invalid ID to capture the not-found shape."
+  - "Rate-limit /api/checkout/verify-account before go-live — it fronts the owner's real supplier account with no throttle (see known_issues)"
   - "Ask the owner about the region/SKU mismatch (16 BR products vs our 26) before any fulfilment mapping"
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
   - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists with the IDOR guard"

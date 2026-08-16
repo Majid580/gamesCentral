@@ -212,8 +212,22 @@ export async function fetchProductList(
 /* getrole                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Application-level status for "no such account", confirmed live: the upstream
+ * answers HTTP 200 with `{"status":20003,"message":"USER ID ou Zone ID não
+ * existe"}`. A wrong Player ID and a wrong Zone ID produce the identical
+ * response, so it is not possible to tell the customer which of the two is at
+ * fault — only that the pair does not match an account.
+ */
+const ACCOUNT_NOT_FOUND_STATUS = "20003";
+
 const getRoleSchema = z.object({
   username: z.string().optional(),
+  /**
+   * NOT an echo of the zoneid we sent — a real lookup on zone 16932 came back
+   * `zone: 1`. Whatever it means, it is not the customer's Zone ID and must
+   * never be displayed as one.
+   */
   zone: z.union([z.string(), z.number()]).optional(),
   /**
    * When present, this is the source of truth for the final charge over the
@@ -221,8 +235,14 @@ const getRoleSchema = z.object({
    * service rather than silently resolved.
    */
   change_price: z.union([z.string(), z.number()]).optional(),
-  /** Undocumented in the supplied PDF. Captured verbatim for inspection. */
+  /** Undocumented in the supplied PDF. Observed live as the string "c". */
   use: z.unknown().optional(),
+  /*
+   * The live response also carries an undocumented `id_change_price_info`:
+   * a per-product `[{ product_id, change_price }]` array. Not read here —
+   * Phase 6 needs it when the final charge is computed, and it is recorded in
+   * project_state.yaml so it is not rediscovered from scratch.
+   */
 });
 
 
@@ -257,7 +277,24 @@ export async function getRole(args: {
     zoneid: args.zoneId,
   });
 
-  const unwrapped = unwrapEnvelope(payload, "/smilecoin/api/getrole");
+  let unwrapped: unknown;
+  try {
+    unwrapped = unwrapEnvelope(payload, "/smilecoin/api/getrole");
+  } catch (error) {
+    /*
+     * A no-such-account answer is an ordinary outcome of a customer typo, not
+     * an upstream failure, and the two demand opposite instructions: "check
+     * your Player ID" versus "we're having trouble, try again shortly".
+     * Separating them here is what lets checkout say the right one.
+     */
+    if (
+      error instanceof SmileOneError &&
+      error.upstreamStatus === ACCOUNT_NOT_FOUND_STATUS
+    ) {
+      return { username: null, zone: null, changePrice: null, rawUseField: undefined };
+    }
+    throw error;
+  }
 
   const parsed = getRoleSchema.safeParse(unwrapped);
   if (!parsed.success) {

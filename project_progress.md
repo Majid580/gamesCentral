@@ -5,6 +5,75 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-16 — Real player-name lookup, live on the site
+
+The owner supplied a Player ID + Zone ID (`1638539586` / `16932`), `getrole`
+returned **`proplayer123`**, and the owner confirmed that is correct. The
+account-verification path is now real from the browser all the way to SmileOne.
+
+**What a wrong ID actually looks like**
+
+Two deliberate misses — a nonsense Player ID, and the owner's real Player ID
+against a wrong Zone ID — returned byte-identical responses:
+
+```
+HTTP 200  {"status":20003,"message":"USER ID ou Zone ID não existe"}
+```
+
+Two things follow. First, a failed lookup arrives as **HTTP 200**, so it has to
+be detected from the body — `unwrapEnvelope()` now does that, and `getRole()`
+maps status `20003` specifically to "no account" while letting every other
+non-200 status stay an upstream error. That distinction is the whole point: a
+typo and an outage need opposite instructions, and before this the customer got
+*"we can't reach the game servers"* for their own typo.
+
+Second, the supplier cannot tell us **which** of the two fields is wrong. So the
+controller's error shape changed from `field: string` to `fields: string[]` and
+a not-found marks both inputs. Claiming it was the Player ID would send someone
+with a mistyped Zone ID looking in the wrong place.
+
+Copy is now: *"No player found for that Player ID and Zone ID. Check both and
+try again."* The Portuguese upstream message is never forwarded to the browser
+(rule 7) — it stays in the server log.
+
+**Verified in the browser, not just in the script**
+
+| Input | Result |
+| --- | --- |
+| `999999999999` / `99999` | not-found message, both boxes red, `aria-invalid="true"`, API 404 |
+| `1638539586` / `16932` | **proplayer123** shown for confirmation, API 200 |
+
+No "Development stub" badge on the success case, which is the proof it was a
+real lookup — `SMILEONE_STUB` is empty. Server log shows the two calls:
+`POST /api/checkout/verify-account 404` then `200`. Screenshots still time out
+(Browser pane never composites on this machine — same known issue as the
+unobserved scroll reveal), so this was verified through page text, computed
+styles, network records and server logs instead.
+
+**Two findings worth keeping**
+
+`getrole`'s `zone` is not an echo of the Zone ID sent — zone `16932` came back
+as `zone: 1`. The UI shows the customer's typed value and must keep doing so.
+
+The response also carries an undocumented `id_change_price_info`: per-product
+`{product_id, change_price}` entries, all `1` except product 25 at `1.0043`, so
+they read as multipliers rather than prices. Phase 6 has to reconcile that with
+the top-level `change_price` before computing any charge. It also lists
+`product_id: 20340`, which does not appear in `productlist` — more evidence the
+catalogue mapping is unsettled.
+
+**The risk this opens, stated plainly**
+
+`/api/checkout/verify-account` is public, unauthenticated and unthrottled, and
+every call now reaches the owner's real SmileOne account. It cannot spend money
+— `getrole` only reads, and `createorder` is still blocked in `safety.ts` — but
+an unrate-limited public endpoint fronting a partner API is a good way to get
+the merchant account throttled or suspended, which would take the storefront
+down. The MongoDB TTL pattern already written for admin login applies directly.
+Logged as a pre-go-live task, not Phase 9 cleanup.
+
+---
+
 ## 2026-08-16 — SmileOne live account connected, read-only, with a hard delivery gate
 
 The owner supplied their **real** SmileOne credentials — a production account

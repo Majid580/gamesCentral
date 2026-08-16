@@ -34,7 +34,11 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
   const [verification, setVerification] = useState<Verification | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorField, setErrorField] = useState<string | null>(null);
+  /**
+   * More than one field can be at fault at once: the supplier returns the same
+   * answer for a wrong Player ID and a wrong Zone ID, so both get marked.
+   */
+  const [errorFields, setErrorFields] = useState<string[]>([]);
 
   async function post(path: string, body: unknown) {
     const response = await fetch(path, {
@@ -44,12 +48,12 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
     });
     const data = (await response.json().catch(() => ({}))) as {
       error?: string;
-      field?: string;
+      fields?: string[];
       [k: string]: unknown;
     };
     if (!response.ok) {
       const err = new Error(data.error ?? "Something went wrong. Please try again.");
-      (err as Error & { field?: string }).field = data.field;
+      (err as Error & { fields?: string[] }).fields = data.fields;
       throw err;
     }
     return data;
@@ -59,7 +63,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
     event.preventDefault();
     setBusy(true);
     setError(null);
-    setErrorField(null);
+    setErrorFields([]);
 
     try {
       const data = (await post("/api/checkout/verify-account", {
@@ -72,7 +76,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
       setStage("confirm");
     } catch (e) {
       setError((e as Error).message);
-      setErrorField((e as Error & { field?: string }).field ?? null);
+      setErrorFields((e as Error & { fields?: string[] }).fields ?? []);
     } finally {
       setBusy(false);
     }
@@ -84,7 +88,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
 
     setBusy(true);
     setError(null);
-    setErrorField(null);
+    setErrorFields([]);
 
     try {
       const data = (await post("/api/checkout/create-order", {
@@ -104,7 +108,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
       router.push(`/order/${data.orderId}`);
     } catch (e) {
       setError((e as Error).message);
-      setErrorField((e as Error & { field?: string }).field ?? null);
+      setErrorFields((e as Error & { fields?: string[] }).fields ?? []);
       setBusy(false);
     }
   }
@@ -122,7 +126,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
           onChange={setPlayerId}
           inputMode="numeric"
           autoComplete="off"
-          invalid={errorField === "playerId"}
+          invalid={errorFields.includes("playerId")}
           required
         />
 
@@ -135,7 +139,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
             onChange={setZoneId}
             inputMode="numeric"
             autoComplete="off"
-            invalid={errorField === "zoneId"}
+            invalid={errorFields.includes("zoneId")}
             required
           />
         )}
@@ -173,9 +177,8 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
 
           {verification.stubbed && (
             <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
-              <strong className="font-semibold">Development stub.</strong> The
-              SmileOne sandbox is unreachable, so this name is generated, not
-              real.
+              <strong className="font-semibold">Development stub.</strong> This
+              name is generated, not a real lookup — SMILEONE_STUB is set.
             </p>
           )}
 
@@ -185,6 +188,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
               setStage("identify");
               setVerification(null);
               setError(null);
+              setErrorFields([]);
             }}
             className="mt-4 min-h-11 text-sm font-medium text-primary underline underline-offset-4"
           >
@@ -200,7 +204,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
           value={email}
           onChange={setEmail}
           autoComplete="email"
-          invalid={errorField === "contactEmail"}
+          invalid={errorFields.includes("contactEmail")}
           required
         />
 
@@ -212,7 +216,7 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
           value={phone}
           onChange={setPhone}
           autoComplete="tel"
-          invalid={errorField === "contactPhone"}
+          invalid={errorFields.includes("contactPhone")}
           required
         />
 

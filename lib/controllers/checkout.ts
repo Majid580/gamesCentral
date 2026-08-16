@@ -66,7 +66,12 @@ export const createOrderSchema = z.object({
 
 export type CheckoutResult<T> =
   | { ok: true; data: T }
-  | { ok: false; status: number; error: string; field?: string };
+  /**
+   * `fields` is a list rather than a single name because the supplier cannot
+   * always narrow the fault to one input: a wrong Player ID and a wrong Zone
+   * ID return byte-identical responses, so both have to be flagged.
+   */
+  | { ok: false; status: number; error: string; fields?: string[] };
 
 /* ------------------------------------------------------------------ */
 /* Verify account                                                      */
@@ -78,7 +83,7 @@ export async function verifyAccount(
   const parsed = verifyAccountSchema.safeParse(body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return { ok: false, status: 400, error: issue.message, field: String(issue.path[0]) };
+    return { ok: false, status: 400, error: issue.message, fields: [String(issue.path[0])] };
   }
 
   const { sku, playerId, zoneId } = parsed.data;
@@ -110,12 +115,17 @@ export async function verifyAccount(
     return { ok: true, data: verification };
   } catch (error) {
     if (error instanceof AccountNotFoundError) {
+      /*
+       * Both fields are flagged because the supplier genuinely cannot say
+       * which one is wrong — claiming it was the Player ID would send a
+       * customer with a mistyped Zone ID hunting in the wrong place.
+       */
       return {
         ok: false,
         status: 404,
         error:
-          "We couldn't find that account. Check your Player ID and Zone ID and try again.",
-        field: "playerId",
+          "No player found for that Player ID and Zone ID. Check both and try again.",
+        fields: ["playerId", "zoneId"],
       };
     }
     if (error instanceof SmileOneError) {
@@ -145,7 +155,7 @@ export async function createOrder(
   const parsed = createOrderSchema.safeParse(body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return { ok: false, status: 400, error: issue.message, field: String(issue.path[0]) };
+    return { ok: false, status: 400, error: issue.message, fields: [String(issue.path[0])] };
   }
 
   const { quotedPricePkr, ...input } = parsed.data;
