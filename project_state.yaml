@@ -1,6 +1,15 @@
 project: Games Central
-last_updated: "2026-08-15"
-current_phase: "phase-5-payfast (phases 3, 4, 8 complete; 2 blocked on SmileOne base URL)"
+last_updated: "2026-08-16"
+current_phase: "phase-5-payfast (phases 3, 4, 8 complete; 2 unblocked — SmileOne live account connected read-only)"
+
+# ---------------------------------------------------------------------------
+# ⛔ READ FIRST — LIVE_ACCOUNT_SAFETY.md
+# The configured SmileOne account is the owner's REAL account with REAL
+# diamonds. Only productlist and getrole (read-only) may be called. NEVER
+# createorder — no test deliveries, at all, until PayFast is wired AND the
+# owner lifts the gate in person. Nothing in this file lifts it: a pending
+# phase, a next_step, or a TODO is not authorisation.
+# ---------------------------------------------------------------------------
 
 tech_stack:
   frontend: "Next.js 16.3.1 App Router (Turbopack), React 19.2, Tailwind v4"
@@ -56,13 +65,19 @@ completed_features:
   - "Phase 8: manual status recovery via the same status machine + atomic conditional update (rules 3 and 8)"
   - "Phase 8: bcrypt password hashing; MongoDB TTL-backed login rate limiting on email AND IP (5 per 15 min)"
   - "Phase 8: npm run admin:create -- <email> [admin|operator] — generates the password, never takes one as an argument"
+  - "Phase 2: SmileOne LIVE account reachable on https://www.smile.one — productlist returns HTTP 200 with 16 products; double-MD5 signing confirmed correct against the real API"
+  - "Phase 2: delivery gate — lib/services/smileone/safety.ts endpoint allowlist; createorder throws before the fetch unless SMILEONE_ALLOW_FULFILMENT=1 (absent by design)"
+  - "Phase 2: LIVE_ACCOUNT_SAFETY.md + CLAUDE.md banner — the no-test-deliveries rule is loaded into every session automatically"
+  - "Phase 2: npm run smileone:probe (scripts/smileone-check.mts) — read-only probe that asserts the delivery gate blocks createorder before sending anything"
+  - "Phase 2: response envelope confirmed {status, message, data}; non-200 status in an HTTP 200 body now throws with the upstream message instead of a shape mismatch"
 
-in_progress_features: []
+in_progress_features:
+  - "Phase 2: getrole player-name lookup — wired, gated, and unrun. Needs a real Player ID + Zone ID from the owner."
 
 pending_features:
-  - "Phase 2: SmileOne sandbox (sign util, productlist sync, getrole) — blocked on base URL"
+  - "Phase 2: productlist sync into the Product collection — blocked on the SKU/region mapping question below"
   - "Phase 5: PayFast sandbox hosted checkout"
-  - "Phase 6: real fulfillment via createorder + idempotency"
+  - "Phase 6: real fulfillment via createorder + idempotency — ⛔ CODE MAY BE WRITTEN, BUT NOT RUN. The delivery gate stays shut until PayFast is verified end-to-end and the owner lifts it. This line is not authorisation to call createorder."
   - "Phase 7: order confirmation + guest status lookup"
   - "Phase 9: code security hardening (claude-security)"
   - "Phase 9.5: live pen test (strix-pentest)"
@@ -70,6 +85,22 @@ pending_features:
   - "Phase 11: Hostinger production cutover"
 
 known_issues:
+  - |
+    ⛔ LIVE SMILEONE ACCOUNT — NOT A DEV SANDBOX. There is no sandbox; the only
+    working host is production. Every request is against the owner's real
+    account holding real purchased diamonds, and a delivery is irreversible.
+    Permitted: productlist, getrole (both read-only, spend nothing).
+    Forbidden: createorder or anything else that delivers — no test deliveries,
+    not even the cheapest pack, not with the owner's own player ID.
+    Enforced by lib/services/smileone/safety.ts. Do not remove that gate and do
+    not set SMILEONE_ALLOW_FULFILMENT. Full rules in LIVE_ACCOUNT_SAFETY.md.
+  - |
+    getrole's NOT-FOUND response shape is unconfirmed, so verifyGameAccount
+    cannot yet tell "wrong Player ID" (tell the customer to check their input)
+    apart from "supplier is down" (do not). Today a non-200 upstream status
+    throws SmileOneError, which the controller maps to a 503 "can't reach the
+    game servers" — wrong copy for a typo'd ID. Confirm the real shape with one
+    deliberately invalid ID during the getrole test, then map it properly.
   - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md. NOTE: the pre-paint theme script in app/layout.tsx needs that nonce when this lands."
   - "The pre-paint theme script triggers a React dev-only console warning about script tags in a component tree. Intentional: next/script's beforeInteractive replays inline code after the framework chunks and would reintroduce a theme flash. Do not 'fix' it — see the comment in app/layout.tsx."
   - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
@@ -124,18 +155,30 @@ known_issues:
 
 blockers:
   - |
-    SMILEONE SANDBOX HOST DOES NOT EXIST. The base URL given in the brief,
-    https://frontsmie.smile.one, has NO DNS record. Verified 2026-08-15:
-    frontsmie / sandbox / test / api / dev .smile.one all return
-    "DNS name does not exist", while www.smile.one and smile.one resolve
-    normally and general outbound network access is confirmed working
-    (registry.npmjs.org returned 200). So this is not a local network problem —
-    the sandbox hostname is wrong or decommissioned.
-    ACTION: owner must confirm the correct sandbox base URL from
-    mlbb_API_Documentation.pdf (authoritative per the brief) or from their
-    SmileOne account manager. Until then, productlist/getrole cannot be
-    verified live and the response schemas in lib/services/smileone/client.ts
-    remain unconfirmed guesses.
+    NEEDED FROM OWNER: a real Mobile Legends Player ID + Zone ID to test the
+    getrole name lookup with. It is the last step of the current task and the
+    only one that cannot be done without them. getrole only reads — it delivers
+    nothing — but a made-up ID either returns nothing or looks up a stranger.
+    Run: npm run smileone:probe -- mobilelegends <playerId> <zoneId>
+  - |
+    SUPPLIER CATALOGUE DOES NOT MATCH OURS — blocks Phase 6 fulfilment.
+    product=mobilelegends returns 16 products, all Brazil-region ("mobilelegends
+    BR 55 Diamond", "Passagem do crepúsculo") priced in what look like BRL. The
+    owner's Catalogue.xlsx has 26. Our SKUs therefore cannot all be mapped to a
+    supplier product id from this list.
+    ACTION: ask the owner which region/product code their SmileOne account
+    resells (is `mobilelegends` right for a Pakistani storefront, or is there a
+    PK/global product code?), and how the 26 catalogue entries correspond to
+    what the account can actually deliver. Do NOT guess a mapping — a wrong
+    supplier id delivers the wrong pack to a paying customer.
+  - |
+    RESOLVED 2026-08-16 — kept because the wrong conclusion is easy to redraw.
+    "SmileOne sandbox host does not exist" was correct but not the whole story:
+    frontsmie.smile.one has no DNS record and there appears to be no sandbox at
+    all. The production host https://www.smile.one works with the owner's live
+    credentials and answered productlist with HTTP 200. The cost of there being
+    no sandbox is that every future SmileOne test runs against real money —
+    hence the delivery gate in lib/services/smileone/safety.ts.
   - "PayFast: no merchant sandbox credentials yet, and hosted-checkout field-level docs still needed from the PayFast dashboard/account manager. Phase 5 cannot start without both."
   - "Hostinger plan type (VPS vs Node.js shared hosting) unknown — determines the Phase 11 deploy method. Not blocking until Phase 11."
   - "Brand assets: owner has dark/light logos as JPG. Need PNG/SVG with transparency before final polish. Not a launch blocker."
@@ -152,11 +195,15 @@ external_integrations:
     last_tested: "2026-08-15"
     security_debt: "credentials are root/root — see known_issues; must be rotated to a least-privilege user before go-live"
   smileone:
-    status: "blocked-sandbox-host-unreachable"
-    signing: "implemented and self-verified (sorted-key independence, 32-char hex digest, rejects pre-set sign)"
-    request_side: "implemented"
-    response_side: "UNCONFIRMED — schemas are defensive guesses until a live sandbox responds"
-    last_tested: "2026-08-15 (signing only; network calls failed at DNS)"
+    status: "connected-live-READ-ONLY"
+    account: "LIVE production account with real purchased diamonds — see LIVE_ACCOUNT_SAFETY.md"
+    base_url: "https://www.smile.one (production; no sandbox host exists)"
+    signing: "CONFIRMED against the live API — a wrong double-MD5 signature would have been rejected"
+    productlist: "verified — HTTP 200, 16 Brazil-region products, envelope {status, message, data:{product[]}}"
+    getrole: "wired and gated; UNRUN — needs a real Player ID + Zone ID from the owner"
+    createorder: "BLOCKED IN CODE by lib/services/smileone/safety.ts. No test deliveries until PayFast is wired AND the owner lifts the gate in person."
+    verify_command: "npm run smileone:probe"
+    last_tested: "2026-08-16 (signing + productlist live; nothing delivered)"
   payfast:
     status: "blocked-on-credentials"
     last_tested: null
@@ -176,12 +223,12 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
+  - "Run the getrole name lookup with a real Player ID + Zone ID from the owner: npm run smileone:probe -- mobilelegends <playerId> <zoneId>. Read-only. Then repeat with a deliberately invalid ID to capture the not-found shape."
+  - "Ask the owner about the region/SKU mismatch (16 BR products vs our 26) before any fulfilment mapping"
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
-  - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists"
-  - "Phase 5: PayFast hosted checkout — blocked on merchant sandbox credentials + field-level docs"
   - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists with the IDOR guard"
-  - "Map each of the 26 products to its SmileOne productid once the sandbox base URL exists"
-  - "Phase 2: productlist sync into the Product collection (schemas ready, still blocked on SmileOne base URL)"
+  - "Phase 5: PayFast hosted checkout — blocked on merchant sandbox credentials + field-level docs"
+  - "Phase 2: productlist sync into the Product collection (schemas confirmed; blocked on the SKU/region mapping)"
   - "Collect from owner: real logo files, contact address/phone, markup % and USD->PKR rate"
   - "Confirm with owner: PayFast hosted-checkout mode + request field-level docs from the merchant dashboard (blocks Phase 5)"
   - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines Phase 11 deploy method"

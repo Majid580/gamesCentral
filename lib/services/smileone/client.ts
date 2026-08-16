@@ -3,21 +3,26 @@ import "server-only";
 import { z } from "zod";
 
 import { requireEnv } from "@/lib/env";
+import { assertEndpointPermitted } from "@/lib/services/smileone/safety";
 import { toFormBody, withSignature } from "@/lib/services/smileone/sign";
 
 /**
  * SmileOne API client.
  *
+ * ⛔ THIS TALKS TO THE OWNER'S LIVE ACCOUNT, HOLDING REAL DIAMONDS.
+ * Read `LIVE_ACCOUNT_SAFETY.md` before adding an endpoint here. Only the two
+ * read-only lookups below are permitted; `createorder` and anything else that
+ * delivers is blocked by `./safety.ts` and stays blocked until PayFast is
+ * wired and the owner lifts the gate in person.
+ *
  * REQUEST side is verified: the double-MD5 signing in `./sign.ts` has been
  * checked for sorted-key independence, digest shape, and misuse rejection.
  *
- * RESPONSE side is NOT yet verified against a live endpoint. The documented
- * sandbox host (`frontsmie.smile.one`) does not resolve in DNS — see
- * `project_state.yaml` blockers. The schemas below are therefore written
- * defensively: they accept the documented fields, tolerate the two plausible
- * envelope shapes, and log the actual payload shape on a mismatch instead of
- * throwing an opaque error. Confirm and tighten them the moment a working
- * sandbox base URL is available.
+ * RESPONSE side is confirmed for the endpoints exercised by
+ * `npm run smileone:probe` against the live account, and left defensive
+ * elsewhere: the schemas accept the documented fields, tolerate the two
+ * plausible envelope shapes, and log the actual payload shape on a mismatch
+ * instead of throwing an opaque error.
  *
  * Nothing here returns a raw upstream response to a caller (Section 12.14) —
  * every function narrows to the fields the app actually needs.
@@ -39,10 +44,44 @@ export class SmileOneError extends Error {
     message: string,
     readonly endpoint: string,
     readonly status?: number,
+    /**
+     * The application-level `status` from the response envelope, as opposed to
+     * the HTTP status. Present only when the upstream answered with HTTP 200
+     * but reported a failure in the body.
+     */
+    readonly upstreamStatus?: string,
   ) {
     super(message);
     this.name = "SmileOneError";
   }
+}
+
+/**
+ * Unwraps the response envelope, confirmed live as
+ * `{ status: 200, message: "success", data: … }`.
+ *
+ * A non-200 `status` is an application-level failure that still arrives as
+ * HTTP 200, so it has to be detected here or it surfaces downstream as an
+ * uninformative "shape mismatch". The upstream message is kept for the server
+ * log only — the controller never forwards it to the browser (rule 7).
+ */
+function unwrapEnvelope(payload: unknown, endpoint: string): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+
+  const envelope = payload as { status?: unknown; message?: unknown; data?: unknown };
+
+  if (envelope.status !== undefined && String(envelope.status) !== "200") {
+    throw new SmileOneError(
+      `${endpoint} reported status ${String(envelope.status)}: ${String(envelope.message ?? "no message")}`,
+      endpoint,
+      undefined,
+      String(envelope.status),
+    );
+  }
+
+  return "data" in envelope ? envelope.data : payload;
 }
 
 /**
@@ -53,6 +92,9 @@ async function smileOneRequest(
   endpoint: string,
   params: Record<string, string | number>,
 ): Promise<unknown> {
+  // Live-account gate, before anything is dispatched. See ./safety.ts.
+  assertEndpointPermitted(endpoint);
+
   const { baseUrl, key } = config();
   const url = `${baseUrl}${endpoint}`;
 
@@ -101,21 +143,24 @@ async function smileOneRequest(
 /* productlist                                                         */
 /* ------------------------------------------------------------------ */
 
-/** A single catalogue entry, as documented: `{ id, spu, price }`. */
+/**
+ * A single catalogue entry. `id`, `spu` and `price` are documented; the live
+ * API also returns `cost_price` and `discount`, which zod ignores by default
+ * and which nothing here needs — our prices are owner-set, not derived.
+ */
 const rawProductSchema = z.object({
   id: z.union([z.string(), z.number()]).transform(String),
   /**
    * Inconsistent, abbreviated supplier string such as
-   * "mobilelegends BR 78 &8 Diamond". Never displayed to a customer — the
+   * "mobilelegends BR 78&8 Diamond". Never displayed to a customer — the
    * admin-curated display name is used instead (Section 8).
    */
   spu: z.string(),
   price: z.union([z.string(), z.number()]),
 });
 
-/** The envelope shape is unconfirmed; accept the two plausible forms. */
+/** Post-unwrap shape, confirmed live: `data` is `{ product: [...] }`. */
 const productListSchema = z.union([
-  z.object({ data: z.object({ product: z.array(rawProductSchema) }) }),
   z.object({ product: z.array(rawProductSchema) }),
   z.array(rawProductSchema),
 ]);
@@ -137,14 +182,16 @@ export async function fetchProductList(
     product,
   });
 
-  const parsed = productListSchema.safeParse(payload);
+  const data = unwrapEnvelope(payload, "/smilecoin/api/productlist");
+
+  const parsed = productListSchema.safeParse(data);
   if (!parsed.success) {
     // Log the shape, never the contents, so the schema can be corrected.
     console.error("[smileone] productlist shape mismatch", {
       topLevelKeys:
-        payload && typeof payload === "object" && !Array.isArray(payload)
-          ? Object.keys(payload)
-          : typeof payload,
+        data && typeof data === "object" && !Array.isArray(data)
+          ? Object.keys(data)
+          : typeof data,
     });
     throw new SmileOneError(
       "productlist response did not match any expected shape",
@@ -152,11 +199,7 @@ export async function fetchProductList(
     );
   }
 
-  const list = Array.isArray(parsed.data)
-    ? parsed.data
-    : "data" in parsed.data
-      ? parsed.data.data.product
-      : parsed.data.product;
+  const list = Array.isArray(parsed.data) ? parsed.data : parsed.data.product;
 
   return list.map((p) => ({
     smileOneProductId: p.id,
@@ -182,10 +225,6 @@ const getRoleSchema = z.object({
   use: z.unknown().optional(),
 });
 
-const getRoleEnvelopeSchema = z.union([
-  z.object({ data: getRoleSchema }),
-  getRoleSchema,
-]);
 
 export type RoleLookup = {
   /** The in-game username shown to the customer for confirmation. */
@@ -218,13 +257,15 @@ export async function getRole(args: {
     zoneid: args.zoneId,
   });
 
-  const parsed = getRoleEnvelopeSchema.safeParse(payload);
+  const unwrapped = unwrapEnvelope(payload, "/smilecoin/api/getrole");
+
+  const parsed = getRoleSchema.safeParse(unwrapped);
   if (!parsed.success) {
     console.error("[smileone] getrole shape mismatch", {
       topLevelKeys:
-        payload && typeof payload === "object"
-          ? Object.keys(payload as object)
-          : typeof payload,
+        unwrapped && typeof unwrapped === "object"
+          ? Object.keys(unwrapped as object)
+          : typeof unwrapped,
     });
     throw new SmileOneError(
       "getrole response did not match any expected shape",
@@ -232,7 +273,7 @@ export async function getRole(args: {
     );
   }
 
-  const data = "data" in parsed.data ? parsed.data.data : parsed.data;
+  const data = parsed.data;
 
   return {
     username: data.username ?? null,

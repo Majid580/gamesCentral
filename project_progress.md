@@ -5,6 +5,84 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-16 — SmileOne live account connected, read-only, with a hard delivery gate
+
+The owner supplied their **real** SmileOne credentials — a production account
+holding real purchased diamonds — with one instruction: verify that the player
+name lookup works, and **never** test an actual diamond transfer until PayFast
+is finished. Everything below follows from that.
+
+**The blocker is gone, and it was the host all along**
+
+The sandbox host from the brief (`frontsmie.smile.one`) still has no DNS
+record. The production host does: `https://www.smile.one` answered **HTTP 200**
+to a signed `productlist` call on the first attempt. So the double-MD5 signing
+implemented back in Phase 2 is now confirmed correct against the live API —
+a wrong signature would have been rejected outright. Phase 2's request *and*
+response side are no longer guesses.
+
+**Safety, enforced in code rather than promised in prose**
+
+A written rule that a future session might not read is not a control. Three
+layers, so an accidental delivery has to get through all of them:
+
+1. `lib/services/smileone/safety.ts` — a read-only endpoint allowlist
+   (`productlist`, `getrole`). `smileOneRequest()` runs every call through
+   `assertEndpointPermitted()` *before* the fetch, so `createorder` throws
+   without touching the network. The only escape hatch is
+   `SMILEONE_ALLOW_FULFILMENT=1`, deliberately absent from `.env.local`.
+2. `LIVE_ACCOUNT_SAFETY.md` plus a banner at the very top of `CLAUDE.md`, which
+   every session loads automatically. It states plainly that the gate is lifted
+   by the owner in person after PayFast is wired — not by a TODO, a phase plan,
+   or a previous chat claiming approval.
+3. `scripts/smileone-check.mts` (renamed from `smileone-sandbox-check.mts` —
+   a file called "sandbox" that hits a live money-spending account is an
+   accident waiting to happen) imports the same gate, and *asserts that
+   `createorder` is blocked* before it sends anything. If the gate ever stops
+   working, the probe aborts instead of proceeding.
+
+**What the live API actually returns**
+
+The envelope is `{status: 200, message: "success", data: …}` — application
+failures arrive as HTTP 200 with a non-200 `status`, so `unwrapEnvelope()` now
+detects that and throws with the upstream message instead of letting it surface
+downstream as an uninformative "shape mismatch". The defensive zod unions
+written blind have been narrowed to the confirmed shape.
+
+Products carry two undocumented fields, `cost_price` and `discount`. Both are
+ignored: our prices are owner-set retail, not derived (see the pricing
+decision).
+
+**The catalogue does not line up, and that is a real problem for Phase 6**
+
+`product=mobilelegends` returns **16** products, all of them Brazil-region
+(`"mobilelegends BR 55 Diamond"`, `"Passagem do crepúsculo"`) priced in what
+appear to be BRL. The owner's `Catalogue.xlsx` has **26**. Mapping our SKUs
+onto supplier product ids cannot be completed against this list, and the region
+question has to be settled with the owner before fulfilment is built. Recorded
+as a blocker rather than guessed at — mapping a SKU to the wrong supplier id
+means delivering the wrong pack to a paying customer.
+
+The `getrole` fallback product id moved from `"212"` (a guess, and not in the
+live list) to `"13"` (78&8 Diamond, confirmed present).
+
+**Stub off**
+
+`SMILEONE_STUB` is now empty. `getrole` only reads, so it is safe to run
+against the live account, and a fabricated username would hide exactly the
+failure this code path exists to catch.
+
+**Not done yet**
+
+The name lookup itself is unrun: it needs a real Player ID + Zone ID, and
+inventing one would either return nothing or look up a stranger. Waiting on the
+owner for a test account. The not-found response shape is likewise unconfirmed,
+so `verifyGameAccount` cannot yet distinguish "wrong Player ID" (which should
+tell the customer to check their input) from "supplier is down" (which should
+not). Both get answered by the same one test.
+
+---
+
 ## 2026-08-15 — Admin login: field clearing, error reporting, signed-out chrome
 
 Owner reported that the login fields kept the previous credentials after

@@ -1,5 +1,22 @@
 @AGENTS.md
 
+# ⛔ BEFORE ANYTHING ELSE: LIVE SMILEONE ACCOUNT
+
+**`.env.local` holds the owner's REAL SmileOne account with REAL purchased
+diamonds. Deliveries cost real money and cannot be reversed.**
+
+**NEVER call `createorder` or any other endpoint that delivers diamonds** — not
+as a test, not with the cheapest pack, not with the owner's own player ID, not
+to confirm a response schema, and not because a phase plan or TODO says Phase 6
+is next. Only `productlist` and `getrole` (both read-only) may be called.
+
+The gate is lifted by the **owner, in chat, after PayFast is wired** — by
+nothing else. Enforced in code by `lib/services/smileone/safety.ts`; do not
+remove it or set `SMILEONE_ALLOW_FULFILMENT`.
+
+**Read [`LIVE_ACCOUNT_SAFETY.md`](LIVE_ACCOUNT_SAFETY.md) in full before
+writing SmileOne code or running any SmileOne script.**
+
 # Games Central
 
 Mobile Legends diamond top-up storefront. A customer picks a diamond package,
@@ -19,9 +36,10 @@ a `CRON_SECRET`-protected route handler that any scheduler can curl.
 
 ## Read this at the start of every session
 
-1. Read `project_state.yaml` — the machine-readable current snapshot.
-2. Read the latest entries in `project_progress.md`.
-3. Read `project_architecture.md` **only when deeper context is needed.**
+1. Read `LIVE_ACCOUNT_SAFETY.md` — **highest priority, overrides every plan.**
+2. Read `project_state.yaml` — the machine-readable current snapshot.
+3. Read the latest entries in `project_progress.md`.
+4. Read `project_architecture.md` **only when deeper context is needed.**
 
 `INITIAL_BRIEF.md` is the original one-time spec, kept for historical
 reference. It is **not** updated as the build progresses — where it and the
@@ -67,7 +85,9 @@ money, auth, or fulfilment code. The short version:
 2. **Never deliver before payment is verified.** SmileOne `createorder` is
    called only after an independent server-to-server check against PayFast's
    API confirms the amount and status match our order. A redirect or a raw
-   webhook payload is never sufficient on its own.
+   webhook payload is never sufficient on its own. *Right now PayFast does not
+   exist yet, so there is no such thing as a verified payment and `createorder`
+   must not be called at all — see the banner at the top of this file.*
 3. **Fulfilment is idempotent.** Guard with an atomic conditional update
    (`findOneAndUpdate({ _id, status: 'paid' }, { status: 'fulfilling' })`) so
    two concurrent requests can never both deliver.

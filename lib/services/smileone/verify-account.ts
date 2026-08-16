@@ -32,17 +32,22 @@ export class AccountNotFoundError extends Error {
 }
 
 /*
- * DEVELOPMENT STUB.
+ * DEVELOPMENT STUB — now off by default and kept only as a fallback.
  *
- * The SmileOne sandbox host from the brief (frontsmie.smile.one) has no DNS
- * record — re-confirmed against a real resolver, see project_state.yaml — so
- * `getrole` cannot be called at all yet. Without a stub the entire checkout UI
- * would be unbuildable and untestable until the owner supplies a working base
- * URL.
+ * It existed because the sandbox host in the brief (frontsmie.smile.one) has
+ * no DNS record. That is no longer the constraint: `getrole` runs against the
+ * owner's live account on https://www.smile.one, and SMILEONE_STUB is empty in
+ * .env.local so real lookups happen. A fabricated username would hide a broken
+ * lookup, which is the one failure this whole code path exists to prevent.
  *
- * Two independent conditions must hold for it to engage, and the combination
- * is impossible to reach on a deployed production build. There is deliberately
- * no NEXT_PUBLIC_ variant: nothing the browser can send turns this on.
+ * getrole only reads — it is safe to call against the live account. It is
+ * `createorder` that spends money, and that is blocked outright in ./safety.ts
+ * until PayFast is wired (see LIVE_ACCOUNT_SAFETY.md).
+ *
+ * Two independent conditions must hold for the stub to engage, and the
+ * combination is impossible to reach on a deployed production build. There is
+ * deliberately no NEXT_PUBLIC_ variant: nothing the browser can send turns
+ * this on.
  */
 function stubEnabled(): boolean {
   if (process.env.SMILEONE_STUB !== "1") return false;
@@ -100,10 +105,13 @@ export async function verifyGameAccount(args: {
   try {
     role = await getRole({
       product: args.smileOneProduct,
-      // Any catalogue product id is accepted by getrole for a role lookup;
-      // fall back to the cheapest known SKU when this product is not yet
-      // mapped to a supplier id.
-      productId: args.smileOneProductId ?? "212",
+      /*
+       * Any catalogue product id is accepted for a role lookup, so fall back
+       * to a known-live SKU when this product is not yet mapped to a supplier
+       * id. "13" (78&8 Diamond) is confirmed present in the account's live
+       * productlist — the previous "212" was a guess and is not in it.
+       */
+      productId: args.smileOneProductId ?? "13",
       userId: args.playerId,
       zoneId: args.zoneId,
     });
