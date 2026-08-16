@@ -92,21 +92,12 @@ export type FulfilmentPlan = FulfilmentPart[] | null;
 /**
  * Why a plan is still null. Surfaced by `npm run catalogue:verify` so an
  * unmapped product reads as an open question rather than an oversight.
+ *
+ * Empty as of 2026-08-16 — every catalogue product is mapped. Keep the
+ * mechanism: the next product the owner adds arrives unmapped, and it must be
+ * refused at checkout with a stated reason rather than silently sold.
  */
-export const UNMAPPED_REASONS: Record<string, string> = {
-  "ml-dbl-50":
-    "Double Diamonds. Needs owner confirmation: is the supplier's 55-diamond pack (22590) the one that triggers the game's first-recharge double, and does the customer receive 100 or 110?",
-  "ml-dbl-150":
-    "Double Diamonds. Same question as ml-dbl-50, against the 165 pack (22591).",
-  "ml-dbl-250":
-    "Double Diamonds. Same question as ml-dbl-50, against the 275 pack (22592).",
-  "ml-dbl-500":
-    "Double Diamonds. Same question as ml-dbl-50, against the 565 pack (22593).",
-  "ml-combo-1pass-150dia":
-    "No supplier pack delivers exactly 150 diamonds. The nearest is 165 (22591). Needs owner confirmation that over-delivering 15 is intended.",
-  "ml-combo-2pass-50dia":
-    "No supplier pack delivers exactly 50 diamonds. The nearest is 55 (22590). Needs owner confirmation that over-delivering 5 is intended.",
-};
+export const UNMAPPED_REASONS: Record<string, string> = {};
 
 /**
  * Every catalogue SKU and the supplier packs that fulfil it.
@@ -151,12 +142,22 @@ export const FULFILMENT_PLANS: Record<string, FulfilmentPlan> = {
   "ml-dia-5532": [{ supplierProductId: "29", quantity: 1 }],
   "ml-dia-9288": [{ supplierProductId: "30", quantity: 1 }],
 
-  /* ---- Double Diamonds: all four unmapped, see UNMAPPED_REASONS ---- */
-
-  "ml-dbl-50": null,
-  "ml-dbl-150": null,
-  "ml-dbl-250": null,
-  "ml-dbl-500": null,
+  /*
+   * ---- Double Diamonds ----
+   *
+   * The supplier's four flat packs, the only ones whose `spu` carries no
+   * `&bonus`. That is the tell: these are the tiers the game's first-recharge
+   * promotion doubles, so SmileOne delivers the single amount and Moonton
+   * grants the match. One call each.
+   *
+   * Confirmed by the owner's own pricing, which was set from these packs at
+   * the same ~60 PKR-per-BRL as the rest of the catalogue (250 PKR ≈ 4.00 BRL
+   * for the 55 pack; 1,150 PKR ≈ 19.75 for the 275).
+   */
+  "ml-dbl-50": [{ supplierProductId: "22590", quantity: 1 }],
+  "ml-dbl-150": [{ supplierProductId: "22591", quantity: 1 }],
+  "ml-dbl-250": [{ supplierProductId: "22592", quantity: 1 }],
+  "ml-dbl-500": [{ supplierProductId: "22593", quantity: 1 }],
 
   /* ---- Passes: one supplier pack each ---- */
 
@@ -171,9 +172,20 @@ export const FULFILMENT_PLANS: Record<string, FulfilmentPlan> = {
   "ml-combo-5x-weekly": [{ supplierProductId: "16642", quantity: 5 }],
   "ml-combo-10x-weekly": [{ supplierProductId: "16642", quantity: 10 }],
 
-  /* Diamonds attached — no exact pack exists. See UNMAPPED_REASONS. */
-  "ml-combo-1pass-150dia": null,
-  "ml-combo-2pass-50dia": null,
+  /*
+   * Pass plus diamonds. No pack delivers exactly 150 or 50, so these use the
+   * nearest — 165 and 55 — and the catalogue was renamed to match rather than
+   * advertising a number the supplier cannot deliver (owner, 2026-08-16). The
+   * owner's 1,150 PKR price for both was itself set from these packs.
+   */
+  "ml-combo-1pass-150dia": [
+    { supplierProductId: "16642", quantity: 1 },
+    { supplierProductId: "22591", quantity: 1 },
+  ],
+  "ml-combo-2pass-50dia": [
+    { supplierProductId: "16642", quantity: 2 },
+    { supplierProductId: "22590", quantity: 1 },
+  ],
 };
 
 /* ------------------------------------------------------------------ */

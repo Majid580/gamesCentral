@@ -65,14 +65,49 @@ later. Each successful call is appended to `fulfilmentDeliveries`, which is
 what makes the retry arithmetic possible and lets an operator see exactly what
 a customer did and did not receive.
 
-**Six products cannot be sold yet**
+**The last six, resolved by the owner's own prices**
 
-Four Double Diamonds and two combos have no exact supplier pack — the flat
-packs are 55/165/275/565 against catalogue amounts of 50/150/250/500, and no
-pack delivers exactly 150 or 50. Rather than round and hope,
-`createPendingOrder` returns 409 for them. Verified live: `ml-dbl-250` is
-declined before an order row exists. Taking money for a delivery nobody can
-perform is exactly the failure rule 8 exists to prevent.
+Four Double Diamonds and two combos had no exact supplier pack — the flat packs
+are 55/165/275/565 against catalogue amounts of 50/150/250/500, and nothing
+delivers exactly 150 or 50. Rather than round and hope, `createPendingOrder`
+returned 409 for them (verified live: `ml-dbl-250` declined before an order row
+existed) and the question went to the owner.
+
+Their rule: use the pack if it exists, otherwise find a combination matching
+**price and diamonds**. The price half turned out to be decisive. Dividing each
+catalogue price by its supplier cost gives a near-constant rate:
+
+| Product | Supplier cost | PKR per BRL |
+| --- | --- | --- |
+| 86 diamonds — 380 PKR | 6.25 | 60.8 |
+| 1050 diamonds — 4,500 PKR | 75.00 | 60.0 |
+| 9288 diamonds — 37,700 PKR | 625.00 | 60.3 |
+| 1 Pass + 150 dia — 1,150 PKR | 8.00 + **11.99** (165 pack) | 57.5 |
+| 2 Pass + 50 dia — 1,150 PKR | 16.00 + **4.00** (55 pack) | 57.5 |
+
+The whole catalogue was priced off these exact packs at roughly 60 PKR per BRL.
+Both combos were priced from the 165 and 55 packs — independent confirmation of
+the mapping the owner chose. The same test picks the flat packs for the Double
+Diamonds: 250 PKR ÷ 60 is 4.17 BRL, and the 55 pack costs 4.00.
+
+The flat packs are also the only ones whose `spu` carries no `&bonus`, which is
+the tell: they are the tiers the game's first-recharge promotion doubles.
+SmileOne delivers the single amount; Moonton grants the match. That is why
+`expectedSupplierDiamonds()` targets only `diamondAmount` for this kind — using
+the doubled figure would have made every such plan look wrong.
+
+**Renamed to what is actually delivered**
+
+50/150/250/500 became 55/165/275/565, and the two combos became "1 Pass + 165
+Diamonds" and "2 Passes + 55 Diamonds" (owner's decision). Advertising 150 while
+delivering 165 is a promise that does not match the delivery. SKUs are
+unchanged — the seed upserts on `sku`, so renaming one would create a second
+product and orphan any order referencing the first. Prices are untouched; they
+are the owner's to set.
+
+All 26 products now sell. Verified live: `ml-dbl-250` and
+`ml-combo-2pass-50dia` both create orders, and the combo's order carries
+`[{16642, ×2}, {22590, ×1}]`.
 
 **Two things this broke, both instructive**
 
@@ -88,11 +123,20 @@ does not know about — a successful write, a document missing the field, no
 error anywhere. Restart the dev server after a schema change. Noted in
 `define-model.ts` where someone will actually hit it.
 
+**One thing to watch before go-live**
+
+The Double Diamond cards state "pay for 55 diamonds and receive 110 in total"
+as a fact, but the second 55 is Moonton's promotion, not ours. A customer who
+already used their double on that tier gets 55 and will believe they were
+short-changed — and `getrole` does not report promo eligibility, so we cannot
+warn them beforehand. Not introduced here (the old 50+50 naming made the same
+claim), but now understood well enough to name. The wording should say so.
+
 **Verified**
 
 `GC-PN669-J3JU9` (1050 Diamonds) carries `[{26, ×1}, {23, ×2}]` and an empty
-delivery list, read back from Atlas. `ml-dbl-250` returns 409. 20 fulfillable,
-6 awaiting the owner, 0 broken, 6/6 retry cases pass.
+delivery list, read back from Atlas. 26 fulfillable, 0 unmapped, 0 broken, 6/6
+retry cases pass.
 
 Nothing was delivered. `createorder` is still blocked in `safety.ts`, and the
 executor that would walk `remainingCalls()` is deliberately not written yet —

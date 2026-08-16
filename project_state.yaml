@@ -74,11 +74,13 @@ completed_features:
   - "Phase 2: not-found confirmed as HTTP 200 + status 20003; mapped to AccountNotFoundError so a typo reads 'No player found…' instead of a 503 outage message"
   - "Phase 4: checkout account lookup is now REAL end-to-end in the browser — right IDs show the in-game name, wrong IDs show the not-found message with both inputs flagged"
   - "Phase 4: controller error shape is fields[] not field — a wrong Player ID and a wrong Zone ID are indistinguishable upstream, so both are marked"
-  - "Phase 6 (planning half): lib/fulfilment-plan.ts — every SKU mapped to the supplier packs that compose it; 20 of 26 exact, 6 awaiting the owner"
+  - "Phase 6 (planning half): lib/fulfilment-plan.ts — ALL 26 SKUs mapped to the supplier packs that compose them, 0 unmapped, verified by arithmetic"
   - "Phase 6: npm run catalogue:verify — arithmetic proof each plan delivers what the catalogue advertises, plus 6 retry cases for partial delivery; db:seed refuses to run if a plan is wrong"
   - "Phase 6: remainingCalls() — subtracts what already landed, so retrying a half-delivered composed order cannot double-deliver the packs that succeeded"
   - "Phase 6: Product.fulfilmentPlan seeded from code; Order snapshots it at purchase and records each successful call in fulfilmentDeliveries"
-  - "Phase 6: createPendingOrder refuses an unmapped product (409) — verified live: ml-dbl-250 is declined before an order exists"
+  - "Phase 6: createPendingOrder refuses an unmapped product (409) — verified live while ml-dbl-250 was unmapped; now mapped and selling"
+  - "Phase 6: Double Diamonds map to the supplier's four FLAT packs (55/165/275/565) — the only ones with no &bonus in the spu, i.e. the first-recharge tiers"
+  - "Phase 6: catalogue renamed to what is actually delivered — 50/150/250/500 -> 55/165/275/565, '1 Pass + 150' -> '1 Pass + 165', '2 Pass + 50' -> '2 Pass + 55' (owner decision). SKUs unchanged; prices unchanged."
   - "Phase 6: admin order detail shows the plan, the outstanding packs, and diamonds already delivered, for hand-recovering a half-failed order"
 
 in_progress_features: []
@@ -160,12 +162,12 @@ known_issues:
     field — no error anywhere. Cost an order that saved without its
     fulfilmentPlan before the cause was found.
   - |
-    Two test orders exist in the orders collection from verifying the
+    Four test orders exist in the orders collection from verifying the
     fulfilment snapshot: GC-CBV6X-SFRW4 (written by the stale model, so it has
-    NO fulfilmentPlan — it is the bug, not a valid record) and GC-PN669-J3JU9.
-    Both are status `pending`, unpaid, contact owner-test@gamescentral.pk.
-    Safe to delete whenever the owner wants; left in place because deleting
-    order records is their call.
+    NO fulfilmentPlan — it is the bug, not a valid record), GC-PN669-J3JU9,
+    GC-PZKCD-W7MFB and GC-J8GD2-JPRU8. All are status `pending`, unpaid,
+    contact owner-test@gamescentral.pk. Safe to delete whenever the owner
+    wants; left in place because deleting order records is their call.
   - |
     ATLAS CREDENTIALS ARE root/root — GO-LIVE BLOCKER, NOT A DEV BLOCKER.
     Works fine for building, but this database will hold real orders and
@@ -191,20 +193,27 @@ known_issues:
 
 blockers:
   - |
-    SIX PRODUCTS ARE UNMAPPED AND CANNOT BE SOLD. Answered by the owner
-    2026-08-16: the catalogue/supplier gap is composition, not missing stock —
-    "344 Diamonds" is 2× 172, "600" is 86 + 2× 257. 20 of 26 now map exactly
-    (npm run catalogue:verify). The remaining 6 need the owner:
-      - ml-dbl-50 / 150 / 250 / 500 (Double Diamonds). The supplier's flat
-        packs are 55/165/275/565, not 50/150/250/500. Need to know whether
-        those are the packs that trigger the game's first-recharge double, and
-        what the customer actually ends up with.
-      - ml-combo-1pass-150dia, ml-combo-2pass-50dia. No pack delivers exactly
-        150 or 50; nearest are 165 and 55. Need confirmation that
-        over-delivering is intended.
-    createPendingOrder returns 409 for all six, so no money can be taken
-    against them. Do NOT guess — a wrong pack delivers the wrong thing to a
-    paying customer.
+    RESOLVED 2026-08-16 — kept because the reasoning is not re-derivable from
+    the code alone. The catalogue/supplier gap was composition, not missing
+    stock: "344 Diamonds" is 2× 172, "600" is 86 + 2× 257. All 26 SKUs now map
+    (npm run catalogue:verify).
+    The mapping was cross-checked against the owner's OWN PRICES, which turn
+    out to be set at a near-constant ~60 PKR per BRL of supplier cost across
+    the whole catalogue (86 dia: 380/6.25 = 60.8; 9288: 37700/625 = 60.3).
+    That rate identifies which pack a product was priced from — it is what
+    confirmed the two combos use the 165 and 55 packs (1,150 PKR ≈ 19.99 BRL)
+    and the Double Diamonds use the flat 55/165/275/565 packs. If a future
+    price looks wrong, this rate is the check.
+  - |
+    DOUBLE DIAMONDS DEPEND ON A PROMOTION WE DO NOT CONTROL. The supplier
+    delivers only the first number (55/165/275/565); the matching bonus is
+    Moonton's FIRST-RECHARGE promotion, granted in-game on the first purchase
+    of that pack tier. The storefront states "pay for 55 diamonds and receive
+    110 in total" as fact. A customer who has already used their double on
+    that tier will receive 55 and believe they were short-changed, and we
+    cannot detect it beforehand — getrole does not report promo eligibility.
+    Consider wording that names the condition before go-live. Pre-existing
+    (the old 50+50 naming made the same claim), not introduced by the mapping.
   - |
     RESOLVED 2026-08-16 — kept because the wrong conclusion is easy to redraw.
     "SmileOne sandbox host does not exist" was correct but not the whole story:
@@ -258,7 +267,7 @@ decisions:
 
 next_steps:
   - "Phase 5: PayFast — the owner's stated next priority (2026-08-16). Blocked on merchant credentials + field-level docs."
-  - "Get the owner's answer on the 6 unmapped products (Double Diamonds ×4, 2 combos), then add them to FULFILMENT_PLANS and re-run npm run db:seed"
+  - "Reword the Double Diamonds cards to name the first-recharge condition before go-live (see known_issues)"
   - "Rate-limit /api/checkout/verify-account before go-live — it fronts the owner's real supplier account with no throttle (see known_issues)"
   - "Phase 6 executor: walk remainingCalls(), record each success in fulfilmentDeliveries, half-failure -> paid_pending_fulfillment. Write it, do NOT run it until PayFast is verified and the owner opens the gate."
   - "Create the first real admin: npm run admin:create -- <your-email> admin"

@@ -60,19 +60,48 @@ const COMBOS: CatalogueItem[] = [
   { sku: "ml-combo-3x-weekly", kind: "combo", displayName: "3x Weekly Pass", tagline: "Three weekly passes", pricePkrWholeRupees: 1_300 },
   { sku: "ml-combo-5x-weekly", kind: "combo", displayName: "5x Weekly Pass", tagline: "Five weekly passes", pricePkrWholeRupees: 2_200 },
   { sku: "ml-combo-10x-weekly", kind: "combo", displayName: "10x Weekly Pass", tagline: "Ten weekly passes", pricePkrWholeRupees: 4_300 },
-  { sku: "ml-combo-1pass-150dia", kind: "combo", displayName: "1 Pass + 150 Diamonds", tagline: "One weekly pass with 150 diamonds", diamondAmount: 150, pricePkrWholeRupees: 1_150 },
-  { sku: "ml-combo-2pass-50dia", kind: "combo", displayName: "2 Passes + 50 Diamonds", tagline: "Two weekly passes with 50 diamonds", diamondAmount: 50, pricePkrWholeRupees: 1_150 },
+  /*
+   * Named for what the supplier actually delivers, not for the round number
+   * the sheet used. No SmileOne pack carries exactly 150 or 50 diamonds — the
+   * nearest are 165 and 55 — and the owner's own prices were set from those
+   * two packs (1,150 PKR ≈ 8.00 + 11.99 BRL, and ≈ 16.00 + 4.00 BRL, both at
+   * the ~60 PKR/BRL the rest of the catalogue uses). Advertising 150 while
+   * delivering 165 is a promise that does not match the delivery, so the
+   * owner chose to rename (2026-08-16).
+   *
+   * The SKUs deliberately keep their original names: the seed upserts on sku,
+   * so changing one would create a second product and orphan any order that
+   * referenced the first.
+   */
+  { sku: "ml-combo-1pass-150dia", kind: "combo", displayName: "1 Pass + 165 Diamonds", tagline: "One weekly pass with 165 diamonds", diamondAmount: 165, pricePkrWholeRupees: 1_150 },
+  { sku: "ml-combo-2pass-50dia", kind: "combo", displayName: "2 Passes + 55 Diamonds", tagline: "Two weekly passes with 55 diamonds", diamondAmount: 55, pricePkrWholeRupees: 1_150 },
 ];
 
 /**
  * Double Diamonds — pay for the first number, receive it twice over.
- * "50+50" is 50 paid diamonds plus 50 free, delivering 100.
+ * "55+55" is 55 diamonds from the supplier plus 55 the game grants.
+ *
+ * The supplier only ever delivers the first number. The bonus is Moonton's
+ * first-recharge promotion, granted in-game on the first purchase of a given
+ * pack tier — SmileOne has no part in it. That is why `diamondAmount` is the
+ * only figure a fulfilment plan has to satisfy (see `expectedSupplierDiamonds`)
+ * and why these four map to the supplier's four *flat* packs, the ones whose
+ * `spu` carries no `&bonus` at all.
+ *
+ * NUMBERS RENAMED FROM THE SHEET (owner decision, 2026-08-16). The sheet said
+ * 50/150/250/500; SmileOne's flat packs are 55/165/275/565. The owner's prices
+ * were plainly set from those packs — 250 PKR ÷ ~60 PKR-per-BRL is 4.17, and
+ * the 55 pack costs 4.00 — so the packs are right and the round numbers were
+ * shorthand. Renamed to what is actually delivered, on the same reasoning as
+ * the two combos above. Prices are untouched: they are the owner's to set.
+ *
+ * SKUs keep their original names on purpose; the seed upserts on sku.
  */
 const DOUBLE_DIAMONDS: CatalogueItem[] = [
-  { sku: "ml-dbl-50", kind: "double_diamonds", displayName: "50 + 50 Diamonds", diamondAmount: 50, bonusDiamonds: 50, pricePkrWholeRupees: 250 },
-  { sku: "ml-dbl-150", kind: "double_diamonds", displayName: "150 + 150 Diamonds", diamondAmount: 150, bonusDiamonds: 150, pricePkrWholeRupees: 700 },
-  { sku: "ml-dbl-250", kind: "double_diamonds", displayName: "250 + 250 Diamonds", diamondAmount: 250, bonusDiamonds: 250, pricePkrWholeRupees: 1_150, featured: true },
-  { sku: "ml-dbl-500", kind: "double_diamonds", displayName: "500 + 500 Diamonds", diamondAmount: 500, bonusDiamonds: 500, pricePkrWholeRupees: 2_300 },
+  { sku: "ml-dbl-50", kind: "double_diamonds", displayName: "55 + 55 Diamonds", diamondAmount: 55, bonusDiamonds: 55, pricePkrWholeRupees: 250 },
+  { sku: "ml-dbl-150", kind: "double_diamonds", displayName: "165 + 165 Diamonds", diamondAmount: 165, bonusDiamonds: 165, pricePkrWholeRupees: 700 },
+  { sku: "ml-dbl-250", kind: "double_diamonds", displayName: "275 + 275 Diamonds", diamondAmount: 275, bonusDiamonds: 275, pricePkrWholeRupees: 1_150, featured: true },
+  { sku: "ml-dbl-500", kind: "double_diamonds", displayName: "565 + 565 Diamonds", diamondAmount: 565, bonusDiamonds: 565, pricePkrWholeRupees: 2_300 },
 ];
 
 export const MOBILE_LEGENDS_CATALOGUE: CatalogueItem[] = [
