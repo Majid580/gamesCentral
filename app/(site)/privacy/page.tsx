@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { DraftNotice, LegalShell } from "@/components/site/legal-shell";
+import { LegalShell } from "@/components/site/legal-shell";
 import { RESELLER_DISCLAIMER, siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
@@ -14,20 +14,19 @@ export default function PrivacyPolicyPage() {
     <LegalShell
       title="Privacy Policy"
       intro="We collect the minimum needed to deliver your top-up and prove that we did. No customer accounts, no advertising trackers, no selling your data."
-      lastUpdated="15 August 2026"
+      lastUpdated="16 August 2026"
     >
-      <DraftNotice>
-        The registered business name, legal entity, and data-retention periods
-        below need the owner&apos;s confirmation before this page goes live.
-      </DraftNotice>
-
       <h2>Who we are</h2>
       <p>
-        {siteConfig.name} is an online top-up service operating in Pakistan.
-        Our registered address and contact details are on our{" "}
-        <a href="/contact">contact page</a>.{" "}
-        <strong>TODO(owner): registered legal entity name and, if
-        applicable, company registration number.</strong>
+        {siteConfig.legal.entityName} is {siteConfig.legal.entityForm}, selling
+        in-game top-ups for Mobile Legends: Bang Bang. We are the data
+        controller for the information described on this page.
+      </p>
+      <p>
+        Our business address is{" "}
+        {siteConfig.contact.addressLines.join(", ")}. You can reach us on{" "}
+        {siteConfig.contact.phone} or at {siteConfig.contact.email}; full
+        details are on our <a href="/contact">contact page</a>.
       </p>
 
       <h2>What we collect</h2>
@@ -110,9 +109,14 @@ export default function PrivacyPolicyPage() {
       <p>
         Order records — including Player ID, Zone ID, in-game username, contact
         details, and payment reference — are kept for{" "}
-        <strong>TODO(owner): retention period, commonly 5–7 years</strong> to
-        meet accounting and dispute-resolution requirements. Technical security
-        logs are kept for a shorter period and then deleted.
+        <strong>{siteConfig.legal.recordRetention}</strong> from the date of the
+        order, so that we can meet accounting requirements and settle any
+        dispute or chargeback about a delivery we made.
+      </p>
+      <p>
+        Technical security logs, such as records used to rate-limit abuse of our
+        forms, are deleted automatically within hours. We do not keep them
+        alongside your order.
       </p>
 
       <h2>How we protect it</h2>

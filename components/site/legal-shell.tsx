@@ -47,16 +47,10 @@ export function LegalShell({
   );
 }
 
-/**
- * Visible marker for content the owner still has to supply or have reviewed.
- * Deliberately conspicuous — Section 21 gates go-live on none of these
- * remaining.
+/*
+ * `DraftNotice` lived here — a conspicuous banner marking content the owner
+ * still had to supply. Removed 2026-08-16 when the last placeholder was
+ * filled in and every legal page went live-ready. Recoverable from git if a
+ * future policy needs the same treatment; kept out of the tree meanwhile so
+ * nothing unused is mistaken for something still in use.
  */
-export function DraftNotice({ children }: { children: ReactNode }) {
-  return (
-    <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm !text-foreground">
-      <strong className="font-semibold">Draft — needs owner review.</strong>{" "}
-      {children}
-    </p>
-  );
-}

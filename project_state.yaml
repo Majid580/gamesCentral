@@ -200,7 +200,26 @@ known_issues:
     true in a script, false in the Next.js server. Permanent fix is to set
     a static DNS server on the adapter. Not an issue on the Linux production
     target.
-  - "Legal pages are substantive drafts carrying visible 'Draft — needs owner review' banners and inline TODO(owner) markers. Section 21 gates go-live on these being resolved."
+  - |
+    RESOLVED 2026-08-16 — business details and legal pages are live-ready. The
+    owner supplied: Games Central, +92 322 4810876, Feroz Wattowan / District
+    Nankana Sahib / Punjab. Written up as a sole proprietorship with NO
+    company registration number claimed, because claiming one that does not
+    exist is worse than claiming none. Jurisdiction: courts at Nankana Sahib.
+    Record retention: five years. All Draft banners and TODO(owner) markers
+    are gone from every customer-facing page.
+  - |
+    TWO ITEMS STILL NEED THE OWNER before PayFast merchant review:
+      1. support@gamescentral.pk MUST EXIST AND BE MONITORED. It is printed on
+         every legal page as the address for data and refund requests, and
+         PayFast may write to it. If the domain is not set up, point
+         siteConfig.contact.email at a working inbox instead.
+      2. The production domain (gamescentral.pk) is assumed, not confirmed.
+    Also unconfirmed by the owner, though reasonable as written: the delivery
+    promise of 1–5 minutes (only true once Phase 6 automatic delivery ships —
+    until then the owner delivers by hand from the admin queue), escalation
+    after 30 min, resolution within 24h, refund requests within 7 days,
+    reviewed within 48h.
 
 blockers:
   - |

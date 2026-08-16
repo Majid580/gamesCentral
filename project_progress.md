@@ -5,6 +5,68 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-16 — Real business details, and legal pages that are done being drafts
+
+PayFast verify the published address and phone during merchant review, and
+until now both were `[TODO: …]`. The owner supplied the real ones: Games
+Central, +92 322 4810876, Feroz Wattowan, District Nankana Sahib, Punjab.
+
+**The judgement calls, since legal text is not a place to improvise**
+
+The entity is written as *"a sole proprietorship business operating in
+Pakistan"* and **no company registration number is claimed**. Inventing one
+would be far worse on a legal page than having none, and a sole proprietorship
+is the ordinary form for a shop this size. `siteConfig.legal` is the single
+place to change it if the business later incorporates.
+
+Jurisdiction is the courts at Nankana Sahib — the owner's own district, rather
+than defaulting to Lahore. Record retention is stated as **five years** from
+the order date, matching the period Pakistani businesses generally keep
+accounting records, and phrased as a definite period because "as long as
+necessary" tells a customer nothing and satisfies no reviewer.
+
+**Draft banners removed, deliberately**
+
+Two pages still carried `DraftNotice` banners reading "Draft — needs owner
+review". They were honest when written, but they are *customer-facing*, and a
+merchant reviewer reading "draft" on a refund policy is being told the site is
+unfinished. The content behind them was checked instead:
+
+- Delivery: 1–5 minutes normally, contact us after 30, resolved within 24h.
+- Refund: request within 7 days, reviewed within 48h, 5–10 business days to
+  reach a statement — already phrased as bank-dependent, so it never needed
+  PayFast's internal timeline to be accurate.
+
+All achievable, so the banners went and the commitments stayed. They are
+recorded in `project_state.yaml` as promises the owner has not explicitly
+confirmed, which is where that belongs — not on the page a customer reads.
+
+The `DraftNotice` component itself is deleted rather than left unused, with a
+comment saying where it went.
+
+**One thing that is now a promise we must keep**
+
+`support@gamescentral.pk` is printed on every legal page as the address for
+data requests and refunds. The owner did not supply an email, and this is the
+natural one for the domain — but **the mailbox has to actually exist**. A
+published contact address that bounces is worse than no page at all, and
+PayFast may well write to it. Flagged in `site-config.ts` and the tracking
+docs.
+
+Also worth stating plainly: the "delivered within 1–5 minutes" promise is only
+true once Phase 6 automatic delivery ships. Until then the owner fulfils by
+hand from the admin queue, which is exactly the manual SmileOne workflow the
+site is replacing — fine at launch scale, but the page is making a promise the
+code does not yet keep on its own.
+
+**Verified**
+
+`/contact`, `/terms`, `/privacy`, `/refund` and `/delivery` all render the real
+details with zero occurrences of "TODO" or "Draft — needs owner review".
+Policy dates bumped to 16 August 2026. Production build passes.
+
+---
+
 ## 2026-08-16 — PayFast, built around what is actually known
 
 The owner's arrangement is that PayFast add the payment method at go-live, so

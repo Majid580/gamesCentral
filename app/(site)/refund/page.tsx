@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { DraftNotice, LegalShell } from "@/components/site/legal-shell";
+import { LegalShell } from "@/components/site/legal-shell";
 import { siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
@@ -14,13 +14,8 @@ export default function RefundPolicyPage() {
     <LegalShell
       title="Return & Refund Policy"
       intro="Diamonds are a digital good credited directly to your game account. This policy explains exactly when a refund is and is not possible."
-      lastUpdated="15 August 2026"
+      lastUpdated="16 August 2026"
     >
-      <DraftNotice>
-        Refund windows and processing times must be checked against what
-        PayFast and our supplier actually permit before this page goes live.
-      </DraftNotice>
-
       <h2>Summary</h2>
       <p>
         Because diamonds are credited instantly and irreversibly to a game

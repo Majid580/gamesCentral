@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { DraftNotice, LegalShell } from "@/components/site/legal-shell";
+import { LegalShell } from "@/components/site/legal-shell";
 import { RESELLER_DISCLAIMER, siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
@@ -14,22 +14,18 @@ export default function TermsPage() {
     <LegalShell
       title="Terms & Conditions"
       intro="These terms govern your use of Games Central and any order you place. By placing an order you accept them."
-      lastUpdated="15 August 2026"
+      lastUpdated="16 August 2026"
     >
-      <DraftNotice>
-        These are a working draft. Have them reviewed by someone qualified in
-        Pakistani consumer and e-commerce law before go-live, and fill in the
-        registered entity details.
-      </DraftNotice>
-
       <h2>1. Who we are</h2>
       <p>
-        {siteConfig.name} (&quot;we&quot;, &quot;us&quot;) operates this website
-        and sells top-ups for Mobile Legends: Bang Bang.{" "}
-        <strong>
-          TODO(owner): registered legal entity name, registration number, and
-          registered address.
-        </strong>
+        {siteConfig.legal.entityName} (&quot;we&quot;, &quot;us&quot;) is{" "}
+        {siteConfig.legal.entityForm}, and operates this website and sells
+        top-ups for Mobile Legends: Bang Bang.
+      </p>
+      <p>
+        Our business address is{" "}
+        {siteConfig.contact.addressLines.join(", ")}. You can contact us on{" "}
+        {siteConfig.contact.phone} or at {siteConfig.contact.email}.
       </p>
 
       <h2>2. What we sell</h2>
@@ -160,13 +156,13 @@ export default function TermsPage() {
       <h2>13. Governing law</h2>
       <p>
         These terms are governed by the laws of the Islamic Republic of
-        Pakistan, and disputes are subject to the exclusive jurisdiction of its
-        courts. <strong>TODO(owner): confirm the preferred jurisdiction/city.</strong>
+        Pakistan, and any dispute arising from them is subject to the exclusive
+        jurisdiction of {siteConfig.legal.jurisdiction}.
       </p>
 
       <h2>14. Contact</h2>
       <p>
-        {siteConfig.contact.email} · {siteConfig.contact.phone}. Our registered
+        {siteConfig.contact.email} · {siteConfig.contact.phone}. Our business
         address is on the <a href="/contact">contact page</a>.
       </p>
 

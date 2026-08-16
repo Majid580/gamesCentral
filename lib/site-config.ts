@@ -1,9 +1,16 @@
 /**
  * Single source of truth for public site chrome and business details.
  *
- * Everything marked TODO(owner) must be replaced with real values before
- * go-live. PayFast actively verifies the contact address and phone number
- * during merchant review — placeholders will fail that review (Section 14).
+ * Supplied by the owner 2026-08-16. PayFast actively verifies the contact
+ * address and phone number during merchant review (Section 14), so these must
+ * stay real and reachable — do not replace them with examples while testing.
+ *
+ * TWO ITEMS STILL NEED THE OWNER before merchant review:
+ *   - `email` assumes support@gamescentral.pk. **That mailbox has to exist and
+ *     be monitored** — it is printed on every legal page as the address for
+ *     data requests, and PayFast may write to it. If the domain is not set up
+ *     yet, point this at a working inbox instead.
+ *   - `domain` is unconfirmed. Everything else here is the owner's real data.
  */
 
 export const siteConfig = {
@@ -12,23 +19,44 @@ export const siteConfig = {
   description:
     "Buy Mobile Legends diamonds in Pakistan with instant automated delivery. Pay with EasyPaisa, JazzCash, or card.",
 
-  /** TODO(owner): confirm the final production domain. */
+  /** TODO(owner): confirm the final production domain before launch. */
   domain: "gamescentral.pk",
 
   contact: {
-    /** TODO(owner): real registered office address — PayFast verifies this. */
     addressLines: [
-      "[TODO: Street address]",
-      "[TODO: City, Postal code]",
-      "Pakistan",
+      "Feroz Wattowan",
+      "District Nankana Sahib",
+      "Punjab, Pakistan",
     ],
-    /** TODO(owner): real reachable business number — PayFast verifies this. */
-    phone: "[TODO: +92 XXX XXXXXXX]",
-    /** TODO(owner): monitored support inbox on the final domain. */
-    email: "[TODO: support@gamescentral.pk]",
-    /** TODO(owner): WhatsApp number for the existing manual channel. */
-    whatsapp: "[TODO: +92 XXX XXXXXXX]",
+    phone: "+92 322 4810876",
+    /** TODO(owner): this mailbox must exist and be monitored — see above. */
+    email: "support@gamescentral.pk",
+    /** The owner's existing WhatsApp line, same number as the phone. */
+    whatsapp: "+92 322 4810876",
     hours: "Support hours: 10:00–22:00 PKT, seven days a week",
+  },
+
+  /**
+   * How the business is described on the legal pages.
+   *
+   * Written as a sole proprietorship because that is what it is: one owner
+   * trading under a business name, which is the ordinary form for a shop of
+   * this size in Pakistan. No company registration number is claimed, because
+   * claiming one that does not exist is worse on a legal page than claiming
+   * none at all. If the business later incorporates, this is the single place
+   * to say so.
+   */
+  legal: {
+    entityName: "Games Central",
+    entityForm: "a sole proprietorship business operating in Pakistan",
+    /** Where disputes are heard. The owner's own district. */
+    jurisdiction: "the courts at Nankana Sahib, Punjab, Pakistan",
+    /**
+     * Five years, matching the period Pakistani businesses generally keep
+     * accounting records for tax purposes. Stated as a definite period rather
+     * than "as long as necessary", which tells a customer nothing.
+     */
+    recordRetention: "five years",
   },
 
   nav: [

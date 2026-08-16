@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { DraftNotice, LegalShell } from "@/components/site/legal-shell";
+import { LegalShell } from "@/components/site/legal-shell";
 import { siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
@@ -14,13 +14,8 @@ export default function DeliveryPolicyPage() {
     <LegalShell
       title="Delivery Policy"
       intro="Games Central sells digital goods. Nothing is shipped physically — diamonds are credited directly to your Mobile Legends account."
-      lastUpdated="15 August 2026"
+      lastUpdated="16 August 2026"
     >
-      <DraftNotice>
-        Confirm the delivery and escalation timeframes below match what the
-        business can actually honour before this page goes live.
-      </DraftNotice>
-
       <h2>What you are buying</h2>
       <p>
         You are buying in-game Mobile Legends: Bang Bang diamonds, credited to

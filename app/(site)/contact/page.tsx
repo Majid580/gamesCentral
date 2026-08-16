@@ -23,25 +23,10 @@ export default function ContactPage() {
 
       {/*
         Section 14 / Section 21: PayFast actively verifies that a real local
-        office address and contact number are published here. Placeholders will
-        fail merchant review — this notice stays until they are replaced.
+        office address and contact number are published here. These are the
+        owner's real details (supplied 2026-08-16) — never swap them for
+        examples while testing, and keep them in step with lib/site-config.ts.
       */}
-      <p
-        role="status"
-        className="mt-8 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm"
-      >
-        <strong className="font-semibold">
-          TODO(owner) — required before go-live.
-        </strong>{" "}
-        The address and phone number below are placeholders. PayFast verifies
-        these during merchant review, so real, reachable details must replace
-        them in{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">
-          lib/site-config.ts
-        </code>
-        .
-      </p>
-
       <dl
         data-reveal
         className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2"
