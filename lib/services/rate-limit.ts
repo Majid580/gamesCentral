@@ -130,3 +130,27 @@ export function accountLookupRules(ip: string): RateLimitRule[] {
     { key: "lookup:global", ...LOOKUP_GLOBAL },
   ];
 }
+
+/* ------------------------------------------------------------------ */
+/* Payment settlement                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The customer's return from PayFast triggers a verification call, so this is
+ * another public endpoint that makes an outbound request per hit.
+ *
+ * Looser than the lookup limits and per-IP only. The concern here is bounding
+ * anonymous outbound traffic, not protecting a fragile merchant relationship —
+ * a payment gateway expects status queries. No global cap on purpose: it would
+ * let one attacker block real customers from having their payments confirmed,
+ * which is a worse failure than the calls it would save.
+ *
+ * PayFast's own webhook is deliberately NOT limited. Dropping a gateway
+ * notification to save an API call is a bad trade — that notification is how a
+ * customer who closed the tab still gets settled.
+ */
+const SETTLE_PER_IP = { limit: 20, windowMs: 5 * 60 * 1000 };
+
+export function paymentSettleRules(ip: string): RateLimitRule[] {
+  return [{ key: `settle:ip:${ip}`, ...SETTLE_PER_IP }];
+}

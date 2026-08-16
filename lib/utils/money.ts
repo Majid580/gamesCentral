@@ -42,3 +42,48 @@ export function formatPkr(paisa: number): string {
 export function pkrToPaisa(rupees: number): number {
   return Math.round(rupees * PAISA_PER_PKR);
 }
+
+/**
+ * Renders integer paisa as the plain rupee amount a payment gateway expects,
+ * e.g. 450000 -> "4500.00".
+ *
+ * Deliberately not `formatPkr`: that produces "Rs 4,500" for humans, and a
+ * currency symbol or a thousands separator in an API amount field is either
+ * rejected or, worse, silently parsed as a different number.
+ *
+ * Built by integer division rather than `paisa / 100` so no float ever touches
+ * a monetary value (rule 5).
+ */
+export function paisaToAmountString(paisa: number): string {
+  if (!Number.isInteger(paisa)) {
+    throw new Error(
+      `paisaToAmountString expects integer paisa, received ${paisa}. Money must never be a float.`,
+    );
+  }
+  if (paisa < 0) {
+    throw new Error(`paisaToAmountString expects a non-negative amount, received ${paisa}.`);
+  }
+
+  const rupees = Math.trunc(paisa / PAISA_PER_PKR);
+  const remainder = paisa % PAISA_PER_PKR;
+  return `${rupees}.${String(remainder).padStart(2, "0")}`;
+}
+
+/**
+ * Parses a gateway's rupee amount back to integer paisa, or null if it is not
+ * a plain decimal number.
+ *
+ * Returning null rather than NaN or 0 is the point: this is used to compare
+ * what a gateway says was charged against what we asked for, and a
+ * silently-zero parse of an unexpected format would compare equal to nothing
+ * and unequal to everything — either way an unreadable amount must never be
+ * treated as a matching one.
+ */
+export function amountStringToPaisa(amount: string | number): number | null {
+  const text = String(amount).trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
+
+  const [rupees, fraction = ""] = text.split(".");
+  const paisa = fraction.padEnd(2, "0");
+  return Number(rupees) * PAISA_PER_PKR + Number(paisa);
+}

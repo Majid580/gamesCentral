@@ -83,6 +83,13 @@ completed_features:
   - "Phase 6: catalogue renamed to what is actually delivered — 50/150/250/500 -> 55/165/275/565, '1 Pass + 150' -> '1 Pass + 165', '2 Pass + 50' -> '2 Pass + 55' (owner decision). SKUs unchanged; prices unchanged."
   - "Phase 6: admin order detail shows the plan, the outstanding packs, and diamonds already delivered, for hand-recovering a half-failed order"
   - "Security: /api/checkout/verify-account rate limited — 12/IP/10min + 60 global/min, MongoDB TTL-backed (RateLimitHit), 429 with a truthful Retry-After. Verified: 12 pass, 13th refused."
+  - "Phase 5: PayFast client — /token exchange and GET /transaction/basket_id/<id>, the two endpoints the brief confirms. Sandbox/production host from PAYFAST_MODE, overridable via PAYFAST_API_BASE_URL."
+  - "Phase 5: verifyAndSettleOrder — the ONLY path to `paid`. Re-fetches the transaction by our own basket id, requires an allowlisted success status AND an exact paisa amount match, settles with an atomic conditional update."
+  - "Phase 5: FAILS CLOSED — unreadable response, unreachable gateway, or amount mismatch all leave the order in awaiting_payment. Verified live: an armed order with no credentials stayed awaiting_payment, no payment reference invented."
+  - "Phase 5: amount mismatch writes a statusHistory note for the admin rather than settling — that is what a tampered amount looks like from our side"
+  - "Phase 5: routes /api/payments/payfast/{begin,settle,webhook}; webhook is payload-agnostic by design (reads only the basket id, never its claims) so it needs no signature to be safe"
+  - "Phase 5: checkout hands off to PayFast automatically after create-order; when PayFast is unconfigured the customer lands on their order page with the order saved, never a broken form"
+  - "Phase 5: /api/payments/payfast/settle rate limited 20/IP/5min; the webhook deliberately is NOT limited (dropping a gateway notification is worse than the API call it saves)"
 
 in_progress_features: []
 
@@ -226,7 +233,27 @@ blockers:
     credentials and answered productlist with HTTP 200. The cost of there being
     no sandbox is that every future SmileOne test runs against real money —
     hence the delivery gate in lib/services/smileone/safety.ts.
-  - "PayFast: no merchant sandbox credentials yet, and hosted-checkout field-level docs still needed from the PayFast dashboard/account manager. Phase 5 cannot start without both."
+  - |
+    PAYFAST: TWO THINGS ARE GUESSED AND MUST BE CONFIRMED BEFORE REAL MONEY.
+    The integration is built and the confirmed half (token exchange,
+    transaction lookup, verification) is solid. Unconfirmed:
+      1. The API hosts in lib/services/payfast/client.ts. Never dialled.
+         Override with PAYFAST_API_BASE_URL rather than editing code.
+      2. Every hosted-checkout field name in
+         lib/services/payfast/hosted-checkout.ts. A draft, quarantined in one
+         function. In production the app REFUSES to build a redirect until
+         PAYFAST_FIELDS_CONFIRMED=1, which is the human act of having checked
+         them against PayFast's own docs.
+    A wrong guess in either is survivable: the gateway rejects the request and
+    the customer never reaches a payment page. Neither can cause an unpaid
+    order to be treated as paid — that path goes through verification, which
+    trusts only our own basket id and PayFast's direct answer.
+    ACTION: get the hosted-checkout guide + sandbox credentials from PayFast.
+  - |
+    NOTE — context7 has NO PayFast Pakistan documentation. Searching returns
+    PayFast SOUTH AFRICA (payfast.co.za), a completely different company with
+    an unrelated API. Code written from those docs will look correct and fail.
+    Ours is gopayfast.com. Do not "fix" this integration against SA docs.
   - "Hostinger plan type (VPS vs Node.js shared hosting) unknown — determines the Phase 11 deploy method. Not blocking until Phase 11."
   - "Brand assets: owner has dark/light logos as JPG. Need PNG/SVG with transparency before final polish. Not a launch blocker."
 
@@ -252,8 +279,12 @@ external_integrations:
     verify_command: "npm run smileone:probe"
     last_tested: "2026-08-16 (signing + productlist + getrole live, in the script AND through the checkout UI; nothing delivered)"
   payfast:
-    status: "blocked-on-credentials"
-    last_tested: null
+    status: "built-awaiting-credentials"
+    company: "PayFast Pakistan / gopayfast.com — NOT payfast.co.za (different company, unrelated API)"
+    confirmed: "POST /token (merchant_id + secured_key + client_credentials); GET /transaction/basket_id/<id>; PKR only"
+    unconfirmed: "API hosts (never dialled) and every hosted-checkout field name — both quarantined and gated, see blockers"
+    verification: "verifyAndSettleOrder — allowlisted success status AND exact paisa match, atomic conditional update, fails closed"
+    last_tested: "2026-08-16 (no credentials: begin returns an honest 503, settle refuses to mark paid — the fail-closed path)"
 
 decisions:
   pricing: |
@@ -270,7 +301,7 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "Phase 5: PayFast — the owner's stated next priority (2026-08-16). Blocked on merchant credentials + field-level docs."
+  - "PayFast: get merchant credentials + the hosted-checkout field guide, confirm the two guessed items, then set PAYFAST_FIELDS_CONFIRMED=1"
   - "Reword the Double Diamonds cards to name the first-recharge condition before go-live (see known_issues)"
   - "Phase 6 executor: walk remainingCalls(), record each success in fulfilmentDeliveries, half-failure -> paid_pending_fulfillment. Write it, do NOT run it until PayFast is verified and the owner opens the gate."
   - "Create the first real admin: npm run admin:create -- <your-email> admin"

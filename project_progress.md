@@ -5,6 +5,94 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-16 — PayFast, built around what is actually known
+
+The owner's arrangement is that PayFast add the payment method at go-live, so
+the integration had to be built without credentials. That is workable, but it
+forced a real decision about what to do with the parts nobody has documented.
+
+**First: it is not the PayFast you can look up**
+
+Every documentation index — context7 included — returns **PayFast South Africa**
+(`payfast.co.za`). Ours is **PayFast Pakistan** (`gopayfast.com`), a different
+company with an unrelated API. Code written from the South African docs looks
+completely correct and fails against this gateway. Recorded in
+`project_state.yaml` and at the top of the client so nobody "fixes" it later.
+
+**Confirmed vs. guessed, kept strictly apart**
+
+The brief confirms three things, and they are the three that matter: the
+`/token` exchange, `GET /transaction/basket_id/<id>`, and PKR-only. Those carry
+the entire security-critical path. What is *not* confirmed is the hosted
+checkout form — the brief says so explicitly — plus the API hosts, which I
+initially wrote from memory and then marked honestly rather than leaving them
+looking verified.
+
+Everything unconfirmed lives in one function in `hosted-checkout.ts`. That
+placement is the point: when the real documentation arrives, the fix is one
+edit against one list.
+
+**Why guessing there is survivable, and guessing elsewhere would not be**
+
+Nothing downstream believes that form. Rule 2 means payment is confirmed by
+re-fetching the transaction from PayFast using **our own basket id** — which is
+our order id, the one identifier we know before the gateway has seen anything.
+If a field name is wrong, the gateway rejects the request and the customer
+never reaches a payment page: visible, immediate, harmless. There is no path
+where a wrong field name turns an unpaid order into a paid one.
+
+The production gate makes that explicit. With `PAYFAST_MODE=production` and
+`PAYFAST_FIELDS_CONFIRMED` unset, the app refuses to build a redirect at all.
+Sandbox is unrestricted so the flow is testable the moment credentials arrive.
+
+**Fail closed, everywhere**
+
+Since the response shape is unknown, verification can meet something it does
+not recognise. The rule throughout is that an unreadable answer means *not
+paid*. Success statuses are an allowlist, not a blocklist of failures — a
+blocklist treats every unseen status as success, which is exactly backwards for
+a vocabulary we have not confirmed. An unparseable amount returns null rather
+than 0, because a silently-zero parse compares equal to nothing and unequal to
+everything, and either way an unreadable amount must never look like a matching
+one.
+
+An amount mismatch is treated as a security event: logged loudly, written to
+the order's status history for the admin, and **not settled**. The order stays
+in `awaiting_payment` rather than going to `failed`, because money may well
+have moved and `failed` would be both a lie and the end of the recovery path.
+
+**Two triggers, neither trusted**
+
+The customer's return and PayFast's webhook both call the same verification
+with nothing but an order id. They differ in *when* they fire, never in what
+they are believed about — a customer who closes the tab is covered by the
+webhook, a webhook that never arrives is covered by the return. Settlement is
+an atomic conditional update, so when they race, exactly one wins and the loser
+correctly reports success.
+
+That design also answers the webhook signature question: a forged notification
+can at most make us ask PayFast about an order we already know, and PayFast's
+answer decides. It needs no signature to be safe.
+
+**Verified**
+
+With no credentials configured: `begin` returns 503 with an honest "online
+payment isn't live yet, your order is saved", and the order stays `pending`
+rather than stranding in `awaiting_payment`. An order forced to
+`awaiting_payment` and then settled stayed **`awaiting_payment` with a null
+payment reference** — the fail-closed path, logged as
+`gateway_unreachable`. Production build passes with all three payment routes
+registered.
+
+**Where this leaves the shop**
+
+Once credentials land, a verified payment moves an order to `paid`, where it
+appears in the admin dashboard's owed-fulfilment queue with its exact pack list
+— which is the owner's existing manual SmileOne workflow, minus the WhatsApp
+and the retyping. Automatic delivery is Phase 6 and stays behind the gate.
+
+---
+
 ## 2026-08-16 — Rate limiting the account lookup
 
 `/api/checkout/verify-account` is public, unauthenticated, and reaches the

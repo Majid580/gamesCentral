@@ -105,7 +105,26 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
       })) as { orderId: string };
 
       setStage("done");
-      router.push(`/order/${data.orderId}`);
+
+      /*
+       * The order exists and is priced. Now hand off to PayFast.
+       *
+       * A failure here must not look like a failed order: the order is saved
+       * either way, so anything that goes wrong lands the customer on their
+       * order page with their ID rather than back on a form that would create
+       * a second one. That includes the expected case where PayFast is not
+       * connected yet.
+       */
+      try {
+        const payment = (await post("/api/payments/payfast/begin", {
+          orderId: data.orderId,
+        })) as unknown as { action: string; fields: Record<string, string> };
+        submitToGateway(payment);
+        return;
+      } catch {
+        router.push(`/order/${data.orderId}`);
+        return;
+      }
     } catch (e) {
       setError((e as Error).message);
       setErrorFields((e as Error & { fields?: string[] }).fields ?? []);
@@ -237,6 +256,36 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * Sends the browser to PayFast's hosted payment page.
+ *
+ * A real form POST rather than `fetch` + redirect: hosted checkout expects the
+ * customer's own browser to arrive with the fields, and a background request
+ * would fetch the payment page into JavaScript where nobody can pay on it.
+ *
+ * Nothing secret travels here. The access token is short-lived and scoped to
+ * this transaction, and the merchant id is public in any redirect flow — the
+ * `secured_key` never leaves the server. The amount is not trusted either: it
+ * is re-read from our database during verification, so a customer editing this
+ * form changes what the gateway displays and nothing about what we accept.
+ */
+function submitToGateway(payment: { action: string; fields: Record<string, string> }) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = payment.action;
+
+  for (const [name, value] of Object.entries(payment.fields)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+}
 
 function Field({
   id,

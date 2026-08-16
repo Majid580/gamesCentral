@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PaymentReturn } from "@/components/checkout/payment-return";
 import { ButtonLink } from "@/components/ui/button";
 
 export const metadata: Metadata = {
@@ -24,11 +25,21 @@ export const dynamic = "force-dynamic";
  */
 export default async function OrderPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { orderId } = await params;
+  const { from } = await searchParams;
   const safeId = orderId.toUpperCase().slice(0, 20);
+
+  /*
+   * PayFast sends the customer back here. The marker only decides whether to
+   * *ask* our server to verify — it is never itself evidence of payment, and
+   * anyone can add it to the URL. The answer comes from PayFast.
+   */
+  const returningFromPayFast = from === "payfast";
 
   return (
     <div className="mx-auto max-w-2xl px-5 py-16 sm:py-24">
@@ -50,18 +61,23 @@ export default async function OrderPage({
         </p>
 
         {/*
-          Honest about where the build actually is. This order is real and
-          recorded, but no money has moved and nothing has been delivered —
-          saying otherwise on a page that looks like a receipt would be the
-          worst possible place to be vague.
+          Honest about where the build actually is. A page that looks like a
+          receipt is the worst possible place to be vague about whether money
+          moved, so the two cases are kept strictly apart: a customer returning
+          from the gateway gets a verified answer, and everyone else is told
+          plainly that nothing was charged.
         */}
-        <div className="mt-6 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
-          <p>
-            <strong className="font-semibold">No payment was taken.</strong>{" "}
-            Card and wallet payments are still being connected, so this order is
-            recorded but not paid and no diamonds have been sent.
-          </p>
-        </div>
+        {returningFromPayFast ? (
+          <PaymentReturn orderId={safeId} />
+        ) : (
+          <div className="mt-6 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+            <p>
+              <strong className="font-semibold">No payment was taken.</strong>{" "}
+              Card and wallet payments are still being connected, so this order
+              is recorded but not paid and no diamonds have been sent.
+            </p>
+          </div>
+        )}
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row">
           <ButtonLink href="/track" variant="primary" size="md">
