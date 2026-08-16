@@ -3,6 +3,15 @@ import "server-only";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import {
+  SUPPLIER_PACKS,
+  deliveredDiamonds,
+  describePlan,
+  isFullyDelivered,
+  remainingCalls,
+  type FulfilmentPart,
+  type SupplierProductId,
+} from "@/lib/fulfilment-plan";
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import {
   OrderModel,
@@ -170,6 +179,21 @@ export type AdminOrderDetail = AdminOrderRow & {
   statusHistory: { from: string; to: string; note: string | null; at: string }[];
   allowedTransitions: OrderStatus[];
   owesFulfilment: boolean;
+  /**
+   * What this order is made of and how much of it has actually landed.
+   *
+   * A composed order can be half-delivered — two of three packs, then a
+   * timeout — and an operator recovering it by hand needs to know exactly
+   * which packs are outstanding, not just that "something failed".
+   */
+  fulfilment: {
+    /** e.g. "1× 706 Diamonds + 2× 172 Diamonds". */
+    planSummary: string;
+    /** Packs still to buy, as operator-readable labels. */
+    outstanding: string[];
+    deliveredDiamonds: number;
+    complete: boolean;
+  };
 };
 
 export async function getOrder(orderId: string): Promise<AdminOrderDetail | null> {
@@ -211,6 +235,44 @@ export async function getOrder(orderId: string): Promise<AdminOrderDetail | null
     })),
     allowedTransitions: ORDER_STATUSES.filter((to) => canTransition(status, to)),
     owesFulfilment: OWED_FULFILMENT_STATUSES.includes(status),
+    fulfilment: summariseFulfilment(order.fulfilmentPlan, order.fulfilmentDeliveries),
+  };
+}
+
+/**
+ * Turns the raw plan and delivery records into something an operator can read.
+ *
+ * Orders created before fulfilment plans existed have neither field, so an
+ * empty plan is reported as such rather than treated as "nothing left to do" —
+ * the two look identical to `remainingCalls` and mean opposite things.
+ */
+function summariseFulfilment(
+  rawPlan: { supplierProductId: string; quantity: number }[] | undefined,
+  rawDeliveries: { supplierProductId: string }[] | undefined,
+): AdminOrderDetail["fulfilment"] {
+  const deliveries = rawDeliveries ?? [];
+
+  if (!rawPlan?.length) {
+    return {
+      planSummary: "No fulfilment plan recorded on this order.",
+      outstanding: [],
+      deliveredDiamonds: deliveredDiamonds(deliveries),
+      complete: false,
+    };
+  }
+
+  const plan = rawPlan.map((part) => ({
+    supplierProductId: part.supplierProductId as SupplierProductId,
+    quantity: part.quantity,
+  })) satisfies FulfilmentPart[];
+
+  return {
+    planSummary: describePlan(plan),
+    outstanding: remainingCalls(plan, deliveries).map(
+      (id) => SUPPLIER_PACKS[id]?.label ?? `Unknown pack ${id}`,
+    ),
+    deliveredDiamonds: deliveredDiamonds(deliveries),
+    complete: isFullyDelivered(plan, deliveries),
   };
 }
 

@@ -5,6 +5,101 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-16 — Composition: 26 products out of 16 supplier packs
+
+The owner resolved the catalogue gap, and it was not missing stock. Most of
+their products are **combinations** of packs the supplier already sells: "344
+Diamonds" is two 172s, "600" is an 86 plus two 257s, "3x Weekly Pass" is the
+weekly pass bought three times. One customer order therefore becomes several
+`createorder` calls.
+
+**Reading the supplier's numbers**
+
+SmileOne's `spu` encodes `paid&bonus`, not a total: `78&8 Diamond` delivers 86.
+Every mapping depends on reading it that way, so `SUPPLIER_PACKS` writes the
+resulting total out per pack rather than leaving it implied. Once decoded, 8 of
+the 13 diamond SKUs are a single supplier pack, and the other 5 compose:
+
+| Product | Plan | Calls |
+| --- | --- | --- |
+| 344 | 2× 172 | 2 |
+| 514 | 2× 257 | 2 |
+| 600 | 1× 86 + 2× 257 | 3 |
+| 1050 | 1× 706 + 2× 172 | 3 |
+| 1412 | 2× 706 | 2 |
+
+1050 and 1412 were derived rather than given; the owner specified 344, 514 and
+600. `706 + 172 + 172` is the only exact way to reach 1050.
+
+**Written down, not solved at runtime**
+
+A subset-sum solver would find these automatically — and would also find a
+*different* answer the day the supplier's pack list changes, quietly altering
+what a paying customer receives. The mapping is money, so it is a table in
+`lib/fulfilment-plan.ts`, reviewable as a diff.
+
+Where two compositions tie, fewest calls wins: 344 as `172 × 2` costs exactly
+the same as `86 × 4` but gives an order half as many chances to fail halfway.
+
+**The arithmetic is checked, not trusted**
+
+`npm run catalogue:verify` recomputes every plan against the advertised diamond
+count. A `quantity: 2` mistyped as `1` silently halves someone's delivery and
+no amount of careful reading catches that reliably. `npm run db:seed` refuses
+to run if the check fails, which matters because the seed is the only thing
+that writes plans to the database.
+
+**Retrying a half-delivered order**
+
+This is the expensive case. A 3-call order where two land and the third times
+out must retry *only the third* — repeat all three and the customer gets 1050
+free diamonds at the owner's expense. `remainingCalls()` subtracts what
+actually landed, matching by pack rather than by position (the supplier tells
+us which product a call bought, not which line of our plan it was for). Six
+cases cover it, including "more delivered than planned", which clamps to zero
+rather than returning a negative that reads as "one more".
+
+Orders snapshot their plan at purchase, like `pricing` already did — an order
+delivers what was agreed when the customer paid, not what the catalogue says
+later. Each successful call is appended to `fulfilmentDeliveries`, which is
+what makes the retry arithmetic possible and lets an operator see exactly what
+a customer did and did not receive.
+
+**Six products cannot be sold yet**
+
+Four Double Diamonds and two combos have no exact supplier pack — the flat
+packs are 55/165/275/565 against catalogue amounts of 50/150/250/500, and no
+pack delivers exactly 150 or 50. Rather than round and hope,
+`createPendingOrder` returns 409 for them. Verified live: `ml-dbl-250` is
+declined before an order row exists. Taking money for a delivery nobody can
+perform is exactly the failure rule 8 exists to prevent.
+
+**Two things this broke, both instructive**
+
+The unique index on `smileOneProductId` had to go. It encoded "one product =
+one supplier SKU", which composition falsified: 172 and 344 both start from
+pack 23, and the seed died on a duplicate key. `fulfilmentPlan` is the real
+mapping now, and its correctness constraint is arithmetic, not an index.
+
+And the first test order saved **without** its plan. `defineModel()` reuses the
+model registered on the mongoose singleton, that cached model keeps its
+original schema across a hot reload, and Mongoose silently strips fields it
+does not know about — a successful write, a document missing the field, no
+error anywhere. Restart the dev server after a schema change. Noted in
+`define-model.ts` where someone will actually hit it.
+
+**Verified**
+
+`GC-PN669-J3JU9` (1050 Diamonds) carries `[{26, ×1}, {23, ×2}]` and an empty
+delivery list, read back from Atlas. `ml-dbl-250` returns 409. 20 fulfillable,
+6 awaiting the owner, 0 broken, 6/6 retry cases pass.
+
+Nothing was delivered. `createorder` is still blocked in `safety.ts`, and the
+executor that would walk `remainingCalls()` is deliberately not written yet —
+it belongs with PayFast, which is the owner's stated next priority.
+
+---
+
 ## 2026-08-16 — Real player-name lookup, live on the site
 
 The owner supplied a Player ID + Zone ID (`1638539586` / `16932`), `getrole`

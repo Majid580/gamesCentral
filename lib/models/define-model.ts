@@ -11,6 +11,15 @@ import mongoose, { type Model, type Schema } from "mongoose";
  * survives on `globalThis` (see `./db.ts`). Reusing the already-registered
  * model keeps hot reload working without weakening anything in production,
  * where this branch is taken exactly once.
+ *
+ * THE TRAP THIS CREATES. The cached model keeps its ORIGINAL schema, so once
+ * you add a field, a running dev server keeps writing with the old one — and
+ * Mongoose silently strips fields it does not know about. The write succeeds,
+ * the document comes back missing the new field, and nothing reports an error.
+ * Observed for real when `fulfilmentPlan` was added: orders saved without it
+ * until the server was restarted.
+ *
+ * **Restart `npm run dev` after changing a schema.** Hot reload is not enough.
  */
 export function defineModel<T>(name: string, schema: Schema<T>): Model<T> {
   const existing = mongoose.models[name] as Model<T> | undefined;

@@ -5,6 +5,7 @@ import { randomInt } from "node:crypto";
 import { Schema, type InferSchemaType, type Types } from "mongoose";
 
 import { defineModel, integerMoneyField } from "./define-model.ts";
+import { fulfilmentPartSchema } from "./product.ts";
 
 /* ------------------------------------------------------------------ */
 /* Status machine                                                      */
@@ -105,6 +106,21 @@ const statusHistorySchema = new Schema(
   { _id: false },
 );
 
+/**
+ * A single supplier call that succeeded. Append-only: an entry here is a
+ * statement that diamonds reached the player's account, and nothing that
+ * already happened may be edited away.
+ */
+const fulfilmentDeliverySchema = new Schema(
+  {
+    supplierProductId: { type: String, required: true, trim: true },
+    /** SmileOne's order id for this one call. Proof this pack was delivered. */
+    supplierOrderId: { type: String, required: true, trim: true },
+    at: { type: Date, required: true, default: Date.now },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     orderId: {
@@ -196,8 +212,38 @@ const orderSchema = new Schema(
     /** PayFast's transaction/basket reference. Set when checkout begins. */
     paymentReference: { type: String, trim: true, default: null },
 
-    /** SmileOne's order id from `createorder`. Proof of delivery. */
+    /**
+     * SmileOne's order id from `createorder`. Proof of delivery.
+     *
+     * Only meaningful for a single-call order. Anything composed of several
+     * packs records each call in `fulfilmentDeliveries` below; this then holds
+     * the first, for continuity with the admin screen.
+     */
     smileOneOrderId: { type: String, trim: true, default: null },
+
+    /* ---- fulfilment ---- */
+
+    /**
+     * What we undertook to deliver, frozen when the order was created.
+     *
+     * Snapshotted rather than read from the Product at delivery time for the
+     * same reason `pricing` is: the mapping is editable, and an order must
+     * deliver what was agreed when the customer paid, not what the catalogue
+     * happens to say later. It also means a plan correction cannot silently
+     * change the contents of an order that is already in flight.
+     */
+    fulfilmentPlan: { type: [fulfilmentPartSchema], default: [] },
+
+    /**
+     * One entry per `createorder` that actually succeeded.
+     *
+     * A composed order can fail halfway — two of three packs delivered, then a
+     * timeout — and rule 8 says a payment is never silently lost. Recording
+     * each successful call individually is what lets a retry deliver only the
+     * remainder instead of double-delivering the packs that already landed,
+     * and lets an operator see exactly what a customer did and did not get.
+     */
+    fulfilmentDeliveries: { type: [fulfilmentDeliverySchema], default: [] },
 
     /* ---- contact (guest checkout: no accounts in v1) ---- */
 

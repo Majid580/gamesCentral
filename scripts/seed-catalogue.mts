@@ -16,11 +16,36 @@ import { resolveMongoUri } from "../lib/utils/dns-resolver.ts";
 import { GameModel } from "../lib/models/game.ts";
 import { ProductModel } from "../lib/models/product.ts";
 import { MOBILE_LEGENDS_CATALOGUE, KIND_ORDER } from "../lib/catalogue-source.ts";
+import {
+  FULFILMENT_PLANS,
+  describePlan,
+  verifyFulfilmentPlans,
+} from "../lib/fulfilment-plan.ts";
 import { pkrToPaisa } from "../lib/utils/money.ts";
 
 const uri = process.env.DATABASE_URL;
 if (!uri) {
   console.error("DATABASE_URL is not set. Run this via `npm run db:seed`.");
+  process.exit(1);
+}
+
+/*
+ * Refuse to seed a plan that does not deliver what the catalogue advertises.
+ *
+ * The seed is the only thing that writes fulfilment plans into the database,
+ * which makes it the right gate: a mistyped quantity would otherwise reach
+ * production and silently short-change customers. Unmapped products are fine
+ * here — they seed with an empty plan and are refused at order creation.
+ */
+const planProblems = verifyFulfilmentPlans().filter(
+  (check) => check.status === "mismatch" || check.status === "missing",
+);
+if (planProblems.length) {
+  console.error("Refusing to seed — fulfilment plans are wrong:\n");
+  for (const problem of planProblems) {
+    console.error(`  ${problem.sku}: ${problem.detail}`);
+  }
+  console.error("\nRun `npm run catalogue:verify` for the full report.");
   process.exit(1);
 }
 
@@ -59,6 +84,8 @@ try {
 
   for (const [index, item] of MOBILE_LEGENDS_CATALOGUE.entries()) {
     const kindRank = KIND_ORDER.indexOf(item.kind);
+    const plan = FULFILMENT_PLANS[item.sku] ?? null;
+
     const result = await ProductModel.findOneAndUpdate(
       { sku: item.sku },
       {
@@ -71,6 +98,19 @@ try {
           bonusDiamonds: item.bonusDiamonds ?? null,
           // The single conversion from whole rupees to integer paisa.
           pricePkr: pkrToPaisa(item.pricePkrWholeRupees),
+          /*
+           * The supplier packs this product is assembled from. An unmapped
+           * product seeds as `[]`, which createPendingOrder refuses — the
+           * product stays visible but cannot be bought until the mapping is
+           * confirmed.
+           */
+          fulfilmentPlan: plan ?? [],
+          /*
+           * Kept in step with the plan so `getrole` always has a valid product
+           * id to look an account up against: the first pack for a mapped
+           * product, null for an unmapped one.
+           */
+          smileOneProductId: plan?.[0]?.supplierProductId ?? null,
           isActive: true,
           featured: item.featured ?? false,
           sortOrder: kindRank * 1000 + index,
@@ -107,8 +147,18 @@ try {
         : r.diamondAmount
           ? `${r.diamondAmount} dia`
           : "—";
+      const parts: { supplierProductId: string; quantity: number }[] =
+        r.fulfilmentPlan ?? [];
+      const plan = parts.length
+        ? describePlan(
+            parts.map((p) => ({
+              supplierProductId: p.supplierProductId as never,
+              quantity: p.quantity,
+            })),
+          )
+        : "NOT DELIVERABLE — awaiting owner";
       console.log(
-        `    ${r.sku.padEnd(24)} ${String(dia).padStart(14)}  ${(r.pricePkr / 100).toLocaleString("en-PK")} PKR`,
+        `    ${r.sku.padEnd(24)} ${String(dia).padStart(14)}  ${String((r.pricePkr / 100).toLocaleString("en-PK")).padStart(7)} PKR  ${plan}`,
       );
     }
   }

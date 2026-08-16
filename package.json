@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "smileone:probe": "node --env-file=.env.local scripts/smileone-check.mts",
+    "catalogue:verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-catalogue.mts",
     "db:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/db-check.mts",
     "db:sync-indexes": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/db-sync-indexes.mts",
     "db:seed": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/seed-catalogue.mts",

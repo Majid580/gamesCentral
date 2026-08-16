@@ -38,6 +38,29 @@ export type ProductKind = (typeof PRODUCT_KINDS)[number];
  * reference data, recorded when a product is matched to a SmileOne SKU so
  * margin stays auditable — never inputs to what the customer is charged.
  */
+/**
+ * One line of a fulfilment plan: buy this supplier pack this many times.
+ *
+ * `_id: false` because these are values, not entities — a plan line has no
+ * identity of its own and is always rewritten wholesale by the seed.
+ */
+export const fulfilmentPartSchema = new Schema(
+  {
+    /** SmileOne's `id`, sent as `productid` on `createorder`. */
+    supplierProductId: { type: String, required: true, trim: true },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+      validate: {
+        validator: Number.isInteger,
+        message: "fulfilmentPlan.quantity must be a whole number of packs",
+      },
+    },
+  },
+  { _id: false },
+);
+
 const productSchema = new Schema(
   {
     /**
@@ -69,11 +92,34 @@ const productSchema = new Schema(
      * the supplier mapping, and passes and combos may never correspond to a
      * single SmileOne SKU. A non-sparse unique index would reject the second
      * product without one.
+     *
+     * Set only when the product is a single supplier pack bought once. The
+     * authoritative answer to "what do we buy for this" is `fulfilmentPlan`
+     * below — this field is the degenerate one-pack case, kept because
+     * `getrole` needs some valid product id to perform a lookup against.
      */
     smileOneProductId: {
       type: String,
       default: null,
       trim: true,
+    },
+
+    /**
+     * The supplier packs that together deliver this product, in order.
+     *
+     * Most of the owner's catalogue does not exist as a single SmileOne pack:
+     * "344 Diamonds" is two 172s, "600 Diamonds" is an 86 plus two 257s. One
+     * customer order therefore becomes several `createorder` calls, and this
+     * records exactly which — seeded from `lib/fulfilment-plan.ts`, where the
+     * mapping is written down and checked by `npm run catalogue:verify`.
+     *
+     * Empty means the product is not deliverable and must not be sold.
+     * `createPendingOrder` refuses it rather than taking money for something
+     * that cannot be delivered.
+     */
+    fulfilmentPlan: {
+      type: [fulfilmentPartSchema],
+      default: [],
     },
 
     game: {
@@ -191,20 +237,26 @@ const productSchema = new Schema(
 productSchema.index({ game: 1, isActive: 1, kind: 1, sortOrder: 1 });
 
 /*
- * Unique only across products that actually have a supplier mapping.
+ * Deliberately NOT unique.
  *
- * `sparse: true` is NOT sufficient here: a sparse index skips documents where
- * the field is *missing*, but this field defaults to an explicit `null`, so
- * every unmapped product would still be indexed and the second one would
- * collide on `null`. A partial index keyed on the value being a string is the
- * construct that actually expresses "unique among the ones that have it".
+ * It was unique while the assumption held that one product meant one supplier
+ * SKU. Composition broke that assumption for real: "172 Diamonds" and "344
+ * Diamonds" are one and two of the same supplier pack, so they share a
+ * `smileOneProductId`, and the unique index rejected the second one at seed
+ * time. The field is now just "a valid supplier product id to quote `getrole`
+ * against" — several products legitimately share one.
+ *
+ * `fulfilmentPlan` is the authoritative mapping, and its uniqueness constraint
+ * is that a plan delivers what the catalogue advertises, which is arithmetic
+ * (`npm run catalogue:verify`) rather than anything an index can express.
+ *
+ * Still partial rather than sparse: the field defaults to an explicit `null`,
+ * which a sparse index would happily index, so the filter keys on the value
+ * actually being a string.
  */
 productSchema.index(
   { smileOneProductId: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { smileOneProductId: { $type: "string" } },
-  },
+  { partialFilterExpression: { smileOneProductId: { $type: "string" } } },
 );
 
 // Admin review: what did the last sync fail to touch?

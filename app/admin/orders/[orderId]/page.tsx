@@ -68,6 +68,42 @@ export default async function AdminOrderDetail({
         <Row label="SmileOne order" value={order.smileOneOrderId ?? "—"} />
       </dl>
 
+      {/*
+        What this order is actually made of. Most packages are several supplier
+        packs, so an operator finishing a failed delivery by hand needs the
+        outstanding list — "deliver the rest" is not actionable on its own.
+      */}
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5">
+        <h2 className="font-display text-lg font-semibold">Delivery</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{order.fulfilment.planSummary}</p>
+
+        {order.fulfilment.outstanding.length > 0 ? (
+          <div className="mt-4">
+            <p className="text-sm font-medium">
+              Still to deliver ({order.fulfilment.outstanding.length}{" "}
+              {order.fulfilment.outstanding.length === 1 ? "pack" : "packs"})
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+              {order.fulfilment.outstanding.map((label, index) => (
+                <li key={`${label}-${index}`}>· {label}</li>
+              ))}
+            </ul>
+            {order.fulfilment.deliveredDiamonds > 0 && (
+              <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+                Partially delivered — {order.fulfilment.deliveredDiamonds} diamonds
+                have already reached this account. Do not re-send those packs.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {order.fulfilment.complete
+              ? "Every pack in this order has been delivered."
+              : "Nothing outstanding."}
+          </p>
+        )}
+      </section>
+
       {/* ---- recovery ---- */}
       <section className="mt-8">
         <h2 className="font-display text-lg font-semibold">Change status</h2>

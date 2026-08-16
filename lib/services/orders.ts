@@ -38,6 +38,23 @@ export class ProductUnavailableError extends Error {
   }
 }
 
+/**
+ * Raised when a product has no fulfilment plan — it is on sale but nothing
+ * knows which supplier packs deliver it.
+ *
+ * Separate from ProductUnavailableError because the two are opposite problems:
+ * one is a product that went away, this is a product that is present and
+ * cannot be delivered. Taking money for it and discovering that afterwards is
+ * precisely the failure rule 8 exists to prevent, so it is refused here, at
+ * the last moment before an order record exists.
+ */
+export class ProductNotFulfillableError extends Error {
+  constructor(readonly sku: string) {
+    super("That package can't be delivered yet. Please choose another.");
+    this.name = "ProductNotFulfillableError";
+  }
+}
+
 export async function createPendingOrder(
   input: CreateOrderInput,
 ): Promise<CreatedOrder> {
@@ -49,13 +66,28 @@ export async function createPendingOrder(
   const sku = assertScalar(input.sku, "sku");
 
   const product = await ProductModel.findOne({ sku, isActive: true })
-    .select("_id game displayName pricePkr basePriceUsdCents")
+    .select("_id game displayName pricePkr basePriceUsdCents fulfilmentPlan")
     .lean();
 
   if (!product) throw new ProductUnavailableError();
 
   const game = await GameModel.findById(product.game).select("_id requiresZoneId").lean();
   if (!game) throw new ProductUnavailableError();
+
+  /*
+   * Refuse before an order exists, not after payment.
+   *
+   * Six catalogue products are still awaiting the owner's confirmation of how
+   * they map onto supplier packs (see lib/fulfilment-plan.ts). Until that
+   * lands they are undeliverable, and the only honest thing to do is decline
+   * the sale rather than accept money against a delivery nobody can perform.
+   */
+  const fulfilmentPlan: { supplierProductId: string; quantity: number }[] =
+    product.fulfilmentPlan ?? [];
+  if (fulfilmentPlan.length === 0) {
+    console.error("[orders] refused an order for an unmapped product", { sku });
+    throw new ProductNotFulfillableError(String(sku));
+  }
 
   const order = await OrderModel.create({
     orderId: generateOrderId(),
@@ -77,6 +109,17 @@ export async function createPendingOrder(
       markupPercentage: 0,
       supplierChangePrice: input.supplierChangePrice,
     },
+
+    /*
+     * Frozen at order time, like `pricing` above and for the same reason: the
+     * order must deliver what was agreed when the customer bought, not what
+     * the catalogue says whenever fulfilment happens to run.
+     */
+    fulfilmentPlan: fulfilmentPlan.map((part) => ({
+      supplierProductId: part.supplierProductId,
+      quantity: part.quantity,
+    })),
+    fulfilmentDeliveries: [],
 
     status: "pending",
     statusHistory: [

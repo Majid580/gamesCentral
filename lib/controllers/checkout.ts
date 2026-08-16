@@ -7,6 +7,7 @@ import { GameModel } from "@/lib/models/game";
 import { ProductModel } from "@/lib/models/product";
 import {
   createPendingOrder,
+  ProductNotFulfillableError,
   ProductUnavailableError,
   type CreatedOrder,
 } from "@/lib/services/orders";
@@ -183,6 +184,15 @@ export async function createOrder(
     return { ok: true, data: { ...order, priceChanged } };
   } catch (error) {
     if (error instanceof ProductUnavailableError) {
+      return { ok: false, status: 409, error: error.message };
+    }
+    /*
+     * Distinct from unavailable: the package exists and is priced, we just
+     * cannot deliver it yet. Refusing here means the customer is turned away
+     * before paying, which is the only acceptable outcome — the alternative is
+     * money taken against a delivery that cannot happen.
+     */
+    if (error instanceof ProductNotFulfillableError) {
       return { ok: false, status: 409, error: error.message };
     }
     throw error;
