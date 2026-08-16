@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
+import { accountLookupRules, checkRateLimit } from "@/lib/services/rate-limit";
 import { GameModel } from "@/lib/models/game";
 import { ProductModel } from "@/lib/models/product";
 import {
@@ -72,7 +73,14 @@ export type CheckoutResult<T> =
    * always narrow the fault to one input: a wrong Player ID and a wrong Zone
    * ID return byte-identical responses, so both have to be flagged.
    */
-  | { ok: false; status: number; error: string; fields?: string[] };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      fields?: string[];
+      /** Set on a 429, so the route can send a truthful `Retry-After`. */
+      retryAfterSeconds?: number;
+    };
 
 /* ------------------------------------------------------------------ */
 /* Verify account                                                      */
@@ -80,6 +88,7 @@ export type CheckoutResult<T> =
 
 export async function verifyAccount(
   body: unknown,
+  context: { ip: string },
 ): Promise<CheckoutResult<AccountVerification>> {
   const parsed = verifyAccountSchema.safeParse(body);
   if (!parsed.success) {
@@ -88,6 +97,28 @@ export async function verifyAccount(
   }
 
   const { sku, playerId, zoneId } = parsed.data;
+
+  /*
+   * Rate limit after parsing but before anything expensive.
+   *
+   * This endpoint is public and unauthenticated, and every call that gets past
+   * here reaches the owner's real SmileOne account. Malformed bodies are
+   * rejected above without consuming anyone's budget — they never reach the
+   * supplier, so they are not the traffic worth limiting.
+   */
+  const limit = await checkRateLimit(accountLookupRules(context.ip));
+  if (!limit.allowed) {
+    console.warn("[checkout] account lookup rate limited", {
+      rule: limit.rule,
+      retryAfterSeconds: limit.retryAfterSeconds,
+    });
+    return {
+      ok: false,
+      status: 429,
+      error: "Too many lookups. Please wait a moment and try again.",
+      retryAfterSeconds: limit.retryAfterSeconds,
+    };
+  }
 
   await connectToDatabase();
   const product = await ProductModel.findOne({

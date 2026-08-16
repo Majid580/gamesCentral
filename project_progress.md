@@ -5,6 +5,64 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-16 — Rate limiting the account lookup
+
+`/api/checkout/verify-account` is public, unauthenticated, and reaches the
+owner's real SmileOne account on every call. It cannot spend money — `getrole`
+only reads and `createorder` is blocked — but an unthrottled public endpoint
+fronting a partner API is a good way to get the merchant account throttled or
+suspended, and that takes the whole shop offline.
+
+**Why not reuse the login limiter**
+
+`LoginAttempt` counts only *failures*, and a successful login clears the
+counter — a user who knows their password is not the threat. This is the
+opposite: every call counts, success included, because the cost being limited
+is the supplier request itself. Same MongoDB TTL pattern, different semantics,
+so `RateLimitHit` is its own collection with a namespaced key.
+
+**Two axes, and the second is the one that matters**
+
+12 per IP per 10 minutes is generous for a customer who mistypes a Player ID
+once or twice, and useless to a script. But `x-forwarded-for` is client-supplied
+and spoofable, so per-IP limiting only stops the unsophisticated case. The
+global cap — 60 lookups a minute across everyone — is the real protection,
+because the failure being prevented does not care how many machines the flood
+came from.
+
+That has a genuine cost: an attacker who trips the global rule makes real
+customers wait. Taken deliberately. A minute of "try again shortly" ends by
+itself; a suspended merchant account needs a phone call and takes the shop down
+for as long as that takes.
+
+**Details worth keeping**
+
+Hits are recorded only when the request is *allowed*. Counting refused calls
+would let a client that keeps hammering extend its own lockout indefinitely,
+which reads as a broken site rather than a rate limit. `Retry-After` is computed
+from the oldest hit in the window rather than guessed, so the number is true.
+
+The limiter runs after schema parsing, not before: malformed bodies never reach
+the supplier, so they are not the traffic worth limiting, and rejecting them
+cheaply costs an attacker nothing to discover anyway.
+
+This is a counter, not a lock — two simultaneous requests can both read a count
+just under the limit and both proceed. Fine: the limit exists to stop sustained
+hammering, and being off by one under a race does not change whether the
+supplier sees a flood.
+
+**Verified**
+
+15 rapid lookups from the browser: 12 returned `200` with the real username,
+the 13th returned `429` with `Retry-After: 581`. That figure stayed identical
+across calls 13, 14 and 15 — proof that refused calls are not recorded.
+
+`RateLimitHit` was added to `scripts/db-sync-indexes.mts` in the same change;
+its TTL index would otherwise silently not exist, which is the two-step trap
+already logged for `LoginAttempt`.
+
+---
+
 ## 2026-08-16 — Composition: 26 products out of 16 supplier packs
 
 The owner resolved the catalogue gap, and it was not missing stock. Most of

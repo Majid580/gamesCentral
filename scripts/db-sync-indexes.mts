@@ -27,6 +27,7 @@ import { GameModel } from "../lib/models/game.ts";
 import { LoginAttemptModel } from "../lib/models/login-attempt.ts";
 import { OrderModel } from "../lib/models/order.ts";
 import { ProductModel } from "../lib/models/product.ts";
+import { RateLimitHitModel } from "../lib/models/rate-limit-hit.ts";
 
 const uri = process.env.DATABASE_URL;
 
@@ -42,6 +43,7 @@ const models = [
   AppConfigModel,
   AdminUserModel,
   LoginAttemptModel,
+  RateLimitHitModel,
 ];
 
 try {

@@ -82,6 +82,7 @@ completed_features:
   - "Phase 6: Double Diamonds map to the supplier's four FLAT packs (55/165/275/565) — the only ones with no &bonus in the spu, i.e. the first-recharge tiers"
   - "Phase 6: catalogue renamed to what is actually delivered — 50/150/250/500 -> 55/165/275/565, '1 Pass + 150' -> '1 Pass + 165', '2 Pass + 50' -> '2 Pass + 55' (owner decision). SKUs unchanged; prices unchanged."
   - "Phase 6: admin order detail shows the plan, the outstanding packs, and diamonds already delivered, for hand-recovering a half-failed order"
+  - "Security: /api/checkout/verify-account rate limited — 12/IP/10min + 60 global/min, MongoDB TTL-backed (RateLimitHit), 429 with a truthful Retry-After. Verified: 12 pass, 13th refused."
 
 in_progress_features: []
 
@@ -106,13 +107,16 @@ known_issues:
     Enforced by lib/services/smileone/safety.ts. Do not remove that gate and do
     not set SMILEONE_ALLOW_FULFILMENT. Full rules in LIVE_ACCOUNT_SAFETY.md.
   - |
-    /api/checkout/verify-account IS UNRATE-LIMITED AND PROXIES THE SUPPLIER.
-    Every call hits the owner's real SmileOne account. It cannot spend money —
-    getrole only reads — but an unthrottled public endpoint fronting a partner
-    API invites the supplier to throttle or suspend the merchant account, which
-    would take the whole storefront down. The MongoDB TTL rate-limit pattern
-    from admin login (lib/models/login-attempt.ts) applies directly. Do this
-    before go-live, not in Phase 9 cleanup.
+    RESOLVED 2026-08-16 (rate limiting) — kept because the tuning is a
+    judgement call someone will want to revisit. /api/checkout/verify-account
+    is limited on two axes: 12 per IP per 10 min, and 60 globally per minute.
+    The global rule is the one that actually protects the merchant account,
+    because x-forwarded-for is spoofable and the failure being prevented
+    (SmileOne throttling us) does not care how many machines the flood came
+    from. Its cost is that an attacker tripping it makes real customers wait —
+    accepted deliberately: a minute of "try again" ends by itself, a suspended
+    merchant account needs a phone call. Raise LOOKUP_GLOBAL in
+    lib/services/rate-limit.ts if real traffic ever approaches 1/second.
   - |
     getrole's `zone` is NOT the Zone ID that was sent — a lookup on zone 16932
     returned `zone: 1`. Meaning unknown. The checkout UI shows the customer's
@@ -268,7 +272,6 @@ decisions:
 next_steps:
   - "Phase 5: PayFast — the owner's stated next priority (2026-08-16). Blocked on merchant credentials + field-level docs."
   - "Reword the Double Diamonds cards to name the first-recharge condition before go-live (see known_issues)"
-  - "Rate-limit /api/checkout/verify-account before go-live — it fronts the owner's real supplier account with no throttle (see known_issues)"
   - "Phase 6 executor: walk remainingCalls(), record each success in fulfilmentDeliveries, half-failure -> paid_pending_fulfillment. Write it, do NOT run it until PayFast is verified and the owner opens the gate."
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
   - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists with the IDOR guard"
