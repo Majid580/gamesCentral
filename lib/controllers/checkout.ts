@@ -3,7 +3,11 @@ import "server-only";
 import { z } from "zod";
 
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
-import { accountLookupRules, checkRateLimit } from "@/lib/services/rate-limit";
+import {
+  accountLookupRules,
+  checkRateLimit,
+  orderCreateRules,
+} from "@/lib/services/rate-limit";
 import { GameModel } from "@/lib/models/game";
 import { ProductModel } from "@/lib/models/product";
 import {
@@ -183,6 +187,7 @@ export async function verifyAccount(
 
 export async function createOrder(
   body: unknown,
+  context: { ip: string },
 ): Promise<CheckoutResult<CreatedOrder & { priceChanged: boolean }>> {
   const parsed = createOrderSchema.safeParse(body);
   if (!parsed.success) {
@@ -191,6 +196,22 @@ export async function createOrder(
   }
 
   const { quotedPricePkr, ...input } = parsed.data;
+
+  /*
+   * Limited after parsing, so the rule can be keyed on the validated recipient
+   * address, and before anything is written or sent. This endpoint is public
+   * and now causes an email, which makes it a way to mail a stranger on our
+   * behalf if it is left open.
+   */
+  const limit = await checkRateLimit(orderCreateRules(context.ip, input.contactEmail));
+  if (!limit.allowed) {
+    return {
+      ok: false,
+      status: 429,
+      error: "Too many orders from here just now. Please wait a moment and try again.",
+      retryAfterSeconds: limit.retryAfterSeconds,
+    };
+  }
 
   try {
     const order = await createPendingOrder(input);

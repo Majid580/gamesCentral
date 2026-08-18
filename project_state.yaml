@@ -104,6 +104,13 @@ completed_features:
   - "Phase 7: partial delivery is surfaced to the customer with the real diamond count ('706 diamonds have reached your account so far') rather than letting them discover it in-game and conclude they were cheated"
   - "Phase 7: lookup normalisation — order IDs matched loosely (gc65tcgwgwen finds GC-65TCG-WGWEN) and phones matched on a normalised form via Order.contactPhoneNormalised, so `0322 4810876` at checkout and `+923224810876` at lookup are the same person"
   - "Phase 7: /api/orders/lookup rate limited 20/IP/10min AND 10 per ORDER ID per hour — the per-order rule is the one that protects the second factor, and x-forwarded-for spoofing cannot evade it. Verified: 429 with Retry-After 3581."
+  - "Email: SMTP notifications (lib/services/email/) — order-saved, delivered, paid-but-undelivered to the customer, and an operator alert to ADMIN_EMAIL. Dark until SMTP_* is set; every send is fire-and-forget and can never fail an order."
+  - "Email: order-saved fires BEFORE payment on purpose — the order ID exists nowhere else the customer can reach, and /track cannot help someone who does not have it"
+  - "Email: npm run email:preview renders all four to .email-preview/ from the real templates and ASSERTS escaping (customer-supplied usernames reach a string-concatenated HTML body); --send goes only to ADMIN_EMAIL"
+  - "Security: /api/checkout/create-order rate limited — 6/IP/10min AND 4 per RECIPIENT ADDRESS per hour. The second is the one that matters: it now sends email, so an open endpoint is an email bomb, and per-IP does nothing against spoofed x-forwarded-for. Verified: 4 pass then 429 across SIX different spoofed IPs."
+  - "Security: recipient rate-limit keys are a SHA-256 prefix, not the address — these keys are written to the DB on every allowed request and a plaintext list of customer emails there would be a second copy of personal data to protect"
+  - "nodemailer pinned to ^9: npm resolved 8.0.11 by default, which carries GHSA-p6gq-j5cr-w38f (high) and flagged @auth/core too. v9 deduped and cleared both — npm audit is back to 0 vulnerabilities."
+  - "Contact email is gamersretro50@gmail.com (owner decision 2026-08-18), replacing the assumed support@gamescentral.pk"
   - "Security: form-action in next.config.ts now lists both PayFast hosts (+ any PAYFAST_API_BASE_URL origin). It was 'self', which would have made the browser silently refuse the cross-origin checkout POST on the first real payment."
   - "Security: fulfilment sweep has a 60s wall-clock budget (25 orders x 10 calls x 12s timeout = 50 min inside one request, which a reverse proxy would kill mid-delivery) and per-order try/catch so one throw cannot abort the batch"
   - "Security: clientIp() truncated to 45 chars — it is attacker-controlled and every allowed request writes it to an indexed field as a rate-limit key"
@@ -224,6 +231,19 @@ known_issues:
     scripts, an admin tool later) must set it via normalisePkPhone() or the
     customer will not be able to find their own order by phone number. Email
     lookup is unaffected. Index synced 2026-08-18.
+  - |
+    EMAIL IS DARK UNTIL SMTP_* IS SET, and that is a deliberate, safe default —
+    orders still work, customers just get nothing. Gmail needs a 16-character
+    APP PASSWORD (myaccount.google.com/apppasswords) with 2-Step Verification
+    on; it rejects the account password outright. Check it with
+    `npm run email:preview -- --send`, which mails only ADMIN_EMAIL.
+  - |
+    Email templates are built by STRING CONCATENATION and interpolate
+    customer-controlled values (an in-game username chosen by a stranger).
+    React is not involved, so nothing escapes automatically — every
+    interpolation must go through `esc()` in templates.ts. `npm run
+    email:preview` fails the build-style check if a username reaches the HTML
+    unescaped; keep that assertion.
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
   - |
     Admin catalogue/price editing is NOT built. Prices are owner-set and change
@@ -279,12 +299,16 @@ known_issues:
     Record retention: five years. All Draft banners and TODO(owner) markers
     are gone from every customer-facing page.
   - |
-    TWO ITEMS STILL NEED THE OWNER before PayFast merchant review:
-      1. support@gamescentral.pk MUST EXIST AND BE MONITORED. It is printed on
-         every legal page as the address for data and refund requests, and
-         PayFast may write to it. If the domain is not set up, point
-         siteConfig.contact.email at a working inbox instead.
-      2. The production domain (gamescentral.pk) is assumed, not confirmed.
+    RESOLVED 2026-08-18 (item 1) — the contact address is now
+    gamersretro50@gmail.com, a working inbox the owner reads, replacing the
+    assumed support@gamescentral.pk. It is printed on every legal page as the
+    address for data and refund requests.
+    WORTH REVISITING BEFORE MERCHANT REVIEW: a payment provider verifying a
+    business generally expects an address on the business's own domain. Moving
+    to support@gamescentral.pk once that mailbox exists is one line in
+    site-config.ts plus the SMTP_* variables — no code change.
+    STILL OPEN: the production domain (gamescentral.pk) is assumed, not
+    confirmed by the owner.
     Also unconfirmed by the owner, though reasonable as written: the delivery
     promise of 1–5 minutes (only true once Phase 6 automatic delivery ships —
     until then the owner delivers by hand from the admin queue), escalation
@@ -398,7 +422,7 @@ next_steps:
 
   # --- owner actions, none of them blocking ---
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
-  - "Make support@gamescentral.pk exist and be monitored, or point siteConfig.contact.email at a working inbox — it is printed on every legal page"
+  - "Switch email on: generate a Gmail APP PASSWORD (myaccount.google.com/apppasswords, needs 2-Step Verification) and set SMTP_HOST=smtp.gmail.com, SMTP_USER=gamersretro50@gmail.com, SMTP_PASSWORD=<app password> in .env.local. Then `npm run email:preview -- --send` to confirm."
   - "Confirm the production domain (gamescentral.pk is assumed, not confirmed)"
   - "Collect from owner: real logo files as PNG/SVG with transparency"
   - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines the Phase 11 deploy method"

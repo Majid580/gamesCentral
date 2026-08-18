@@ -5,6 +5,117 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-18 — Email: the order ID reaches the customer, and the queue reaches the owner
+
+Two silences the shop had no answer for. A customer who closed the tab had
+their order ID nowhere — and the tracking page cannot help someone who does not
+have it. An order landing in `paid_pending_fulfillment` told nobody at all; it
+waited until the owner happened to open the dashboard, while someone who had
+paid watched nothing arrive.
+
+Both are now emails. Plain SMTP rather than a provider SDK, matching how the
+rest of this codebase avoids platform-specific primitives: production is a
+self-hosted Node process, and SMTP works from any mailbox. The owner supplied
+`gamersretro50@gmail.com`, so that is what ships — moving to a
+`@gamescentral.pk` mailbox later is `SMTP_*` plus one line in `site-config.ts`,
+not a rewrite.
+
+**Dark until configured, and never fatal**
+
+With `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` unset every send is skipped and
+logged. Confirmed live: ten orders created, ten `[email] not configured —
+skipping` lines, ten orders saved and returned 200. That is the whole posture —
+the order record is the truth and email is a courtesy on top of it, so nothing
+in this feature can fail an order. Every send is fire-and-forget behind a
+rejection handler, because an unhandled rejection from a floating promise
+terminates a Node process by default, and a bounced email taking down the
+server mid-order would invert the priority exactly.
+
+**Four messages**
+
+*Order saved*, sent the moment the order exists — before payment, deliberately.
+Waiting for a successful payment would withhold the order ID from precisely the
+people most likely to need support. It is written to never read as a receipt:
+nothing has been charged at that point and it says so, rather than a cheerful
+subject line a customer later quotes back asking where their diamonds are.
+
+*Delivered*, with the restart tip included on purpose — a balance that has not
+refreshed yet is the most common "it didn't arrive" message a top-up shop gets,
+and answering it before it is asked saves a worried evening and a support
+conversation.
+
+*Paid, delivery needs a hand* — the hardest to write and the most important to
+send. It admits the problem in the first sentence and states that the money is
+accounted for, because silence here is what turns a delayed order into a fraud
+accusation.
+
+*Operator alert* to the owner, which may carry internal detail the customer's
+copy never does: the reason, the outstanding packs, a link into the admin
+screen, and — when a supplier call went out and never confirmed — the
+instruction to check the SmileOne dashboard before retrying.
+
+Both halves of the paid-but-undelivered case go out from one function, so there
+is no path that alerts the operator without reassuring the customer or the
+reverse.
+
+**Public order creation is now rate limited, and had to be**
+
+Checking the wiring surfaced this: `createOrder` had no limit. That was
+tolerable when abusing it wrote database rows. The moment it sends mail, that
+unauthenticated endpoint becomes a way to make our server bomb any inbox the
+caller names — with our domain's reputation attached, and a fast route onto a
+spam blocklist that would then eat the receipts real customers depend on.
+
+Two rules. Six per IP per ten minutes bounds volume. Four per **recipient
+address** per hour is the one that protects a third party, because per-IP does
+nothing against a distributed attempt and `x-forwarded-for` is spoofable
+anyway. Verified both: four requests for one address succeeded and the fifth
+was refused **across six different spoofed IPs**, and eight requests from one
+IP with eight different addresses cut off at six.
+
+The recipient rule keys on a SHA-256 prefix rather than the address. These keys
+are written to the database on every allowed request, and a plaintext list of
+customer email addresses sitting in a rate-limit collection would be a second,
+unnecessary copy of personal data to protect.
+
+**nodemailer 9, not 8**
+
+`npm install nodemailer` resolved to 8.0.11, which carries a high-severity
+advisory (`GHSA-p6gq-j5cr-w38f`) — and `@auth/core` depends on nodemailer too,
+so the whole tree was flagged. We never use the `raw` option the advisory
+concerns, but a payments codebase with a dirty `npm audit` is a codebase where
+the next real advisory gets ignored. Installing 9 directly deduped and cleared
+`@auth/core` as well: **0 vulnerabilities.**
+
+**`npm run email:preview`**
+
+Renders all four messages to `.email-preview/` (gitignored) from the same
+functions the app uses, so what is reviewed is what customers receive rather
+than an approximation. `--send` mails them to `ADMIN_EMAIL` and nowhere else —
+there is no way to point it at an arbitrary address, because a preview tool
+that can mail strangers is a spam tool.
+
+It also asserts escaping rather than leaving it to the eye. These bodies are
+built by string concatenation with no React involved, and they interpolate an
+in-game username chosen by a stranger; the sample data uses
+`Ali's <Squad> "Legend"` and the script fails if that reaches the HTML unescaped.
+
+The email modules use relative imports, matching `lib/fulfilment-plan.ts` and
+the models and for the same reason — Node does not resolve the `@/` alias, and
+the preview has to load the real templates or it is reviewing a copy that can
+drift.
+
+**Verified**
+
+`tsc`, `lint`, `build`, `npm audit` all clean. Ten orders created with email
+unconfigured, all saved, all skipped cleanly. Both rate limits confirmed by
+request, including the spoofed-IP case. The fulfilment drill still passes in
+gated mode — the notification hooks did not disturb it.
+
+Nothing was delivered. `createorder` has still never been called.
+
+---
+
 ## 2026-08-18 — Security pass on the new surface, and a CSP that would have blocked every payment
 
 `CLAUDE.md` says to run a security review after anything touching money or

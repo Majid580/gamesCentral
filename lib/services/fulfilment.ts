@@ -9,6 +9,12 @@ import {
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { GameModel } from "@/lib/models/game";
 import { OrderModel, type OrderStatus } from "@/lib/models/order";
+import { ProductModel } from "@/lib/models/product";
+import {
+  notifyOrderDelivered,
+  notifyOrderNeedsAttention,
+} from "@/lib/services/email/notify";
+import type { OrderEmailFacts } from "@/lib/services/email/templates";
 import type { Types } from "mongoose";
 import { createSupplierOrder, SmileOneError } from "@/lib/services/smileone/client";
 import { SmileOneSafetyError } from "@/lib/services/smileone/safety";
@@ -285,6 +291,7 @@ export async function fulfilOrder(
       `A previous delivery attempt for ${label} did not report back, so it is unknown ` +
         `whether it reached the player. Check the SmileOne dashboard before retrying — ` +
         `retrying blind would buy it twice.`,
+      { outstanding: [pack], needsDashboardCheck: true },
     );
 
     console.error("[fulfilment] outcome of a previous call is unknown", {
@@ -322,6 +329,7 @@ export async function fulfilOrder(
       claimed._id,
       "This order has no fulfilment plan recorded, so nothing knows which supplier " +
         "packs deliver it. Deliver by hand and mark it fulfilled.",
+      { outstanding: [], needsDashboardCheck: false },
     );
     console.error("[fulfilment] paid order has no fulfilment plan", { orderId });
     return {
@@ -352,6 +360,7 @@ export async function fulfilOrder(
       claimed._id,
       "The game this order belongs to is missing from the database, so the supplier " +
         "call cannot be addressed. Needs investigation before delivery.",
+      { outstanding: outstanding.slice(), needsDashboardCheck: false },
     );
     return {
       ok: false,
@@ -408,6 +417,7 @@ export async function fulfilOrder(
                 `was not sent. Deliver this order by hand from the SmileOne dashboard.`
             : `The supplier refused the ${label} purchase. Nothing was delivered for it. ` +
                 `Safe to retry once the cause is known.`,
+          { outstanding: outstanding.slice(delivered), needsDashboardCheck: false },
         );
 
         console.error("[fulfilment] supplier refused", {
@@ -435,6 +445,7 @@ export async function fulfilOrder(
         claimed._id,
         `The ${label} purchase did not report back, so it is unknown whether it reached ` +
           `the player. Check the SmileOne dashboard before retrying.`,
+        { outstanding: outstanding.slice(delivered), needsDashboardCheck: true },
       );
 
       console.error("[fulfilment] delivery outcome unknown", {
@@ -504,14 +515,58 @@ export async function fulfilOrder(
 /* ------------------------------------------------------------------ */
 
 /**
- * Hands a claimed order to the admin queue. Conditional on `fulfilling` so it
- * can only ever release a claim this run actually holds.
+ * Loads what the email templates need. Returns null rather than throwing —
+ * a notification is never worth failing a delivery over.
+ */
+export async function loadOrderEmailFacts(
+  id: Types.ObjectId,
+): Promise<OrderEmailFacts | null> {
+  try {
+    const order = await OrderModel.findById(id)
+      .select("orderId pricePkr playerId zoneId confirmedUsername contactEmail product")
+      .lean();
+    if (!order) return null;
+
+    const product = await ProductModel.findById(order.product)
+      .select("displayName")
+      .lean();
+
+    return {
+      orderId: order.orderId,
+      displayName: product?.displayName ?? "Your package",
+      pricePkr: order.pricePkr,
+      playerId: order.playerId,
+      zoneId: order.zoneId ?? null,
+      confirmedUsername: order.confirmedUsername ?? null,
+      contactEmail: order.contactEmail,
+    };
+  } catch (error) {
+    console.error("[fulfilment] could not load email facts", {
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Hands a claimed order to the admin queue, and tells both people who need to
+ * know. Conditional on `fulfilling` so it can only ever release a claim this
+ * run actually holds.
  *
  * Note where it does NOT go: `failed`. The customer has paid, and the status
  * machine has no edge from `paid` to `failed` for exactly this reason (rule 8).
+ *
+ * The notification is gated on the update having actually modified something.
+ * Without that, a call that lost the conditional — because another process had
+ * already released the order — would send a second round of "we're on it"
+ * emails for one incident.
  */
-async function releaseToPending(id: Types.ObjectId, note: string): Promise<void> {
-  await OrderModel.updateOne(
+async function releaseToPending(
+  id: Types.ObjectId,
+  note: string,
+  alert: { outstanding: readonly string[]; needsDashboardCheck: boolean },
+): Promise<void> {
+  const result = await OrderModel.updateOne(
     { _id: id, status: "fulfilling" },
     {
       $set: { status: "paid_pending_fulfillment" },
@@ -525,10 +580,22 @@ async function releaseToPending(id: Types.ObjectId, note: string): Promise<void>
       },
     },
   );
+
+  if (result.modifiedCount === 0) return;
+
+  const facts = await loadOrderEmailFacts(id);
+  if (!facts) return;
+
+  notifyOrderNeedsAttention({
+    facts,
+    outstanding: alert.outstanding,
+    reason: note,
+    needsDashboardCheck: alert.needsDashboardCheck,
+  });
 }
 
 async function markFulfilled(id: Types.ObjectId, note: string): Promise<void> {
-  await OrderModel.updateOne(
+  const result = await OrderModel.updateOne(
     { _id: id, status: "fulfilling" },
     {
       $set: { status: "fulfilled", fulfilmentInFlight: null },
@@ -542,6 +609,13 @@ async function markFulfilled(id: Types.ObjectId, note: string): Promise<void> {
       },
     },
   );
+
+  // Same gate as above: only the run that actually closed the order announces
+  // it, so a customer is never told twice that their diamonds arrived.
+  if (result.modifiedCount === 0) return;
+
+  const facts = await loadOrderEmailFacts(id);
+  if (facts) notifyOrderDelivered(facts);
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { RateLimitHitModel } from "@/lib/models/rate-limit-hit";
 
@@ -201,5 +203,48 @@ export function orderLookupRules(ip: string, orderId: string): RateLimitRule[] {
   return [
     { key: `track:ip:${ip}`, ...ORDER_LOOKUP_PER_IP },
     { key: `track:order:${orderId}`, ...ORDER_LOOKUP_PER_ORDER },
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Order creation                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Creating an order is unauthenticated and now sends an email, which changes
+ * what this endpoint is. Before, abusing it wrote database rows; now it makes
+ * our server deliver mail to any address the caller names — an email bomb with
+ * our domain's reputation attached, and a fast way onto a spam blocklist that
+ * would then eat the receipts real customers depend on.
+ *
+ * Per IP: a real customer places one order and occasionally retries. Six in
+ * ten minutes is generous for that and useless for volume.
+ */
+const ORDER_CREATE_PER_IP = { limit: 6, windowMs: 10 * 60 * 1000 };
+
+/**
+ * Per recipient address: the rule that actually protects a third party.
+ *
+ * The per-IP limit bounds how much one machine can send; it does nothing to
+ * stop a distributed attempt to bury one person's inbox, and `x-forwarded-for`
+ * is spoofable anyway. Counting against the address being mailed caps what any
+ * single victim can receive from us regardless of where it comes from.
+ *
+ * Keyed on a hash rather than the address itself. These keys are written to
+ * the database on every allowed request, and storing a plaintext list of
+ * customer email addresses in a rate-limit collection would be creating a
+ * second, unnecessary copy of personal data to protect.
+ */
+const ORDER_CREATE_PER_EMAIL = { limit: 4, windowMs: 60 * 60 * 1000 };
+
+export function orderCreateRules(ip: string, contactEmail: string): RateLimitRule[] {
+  const recipient = createHash("sha256")
+    .update(contactEmail.trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 32);
+
+  return [
+    { key: `order:ip:${ip}`, ...ORDER_CREATE_PER_IP },
+    { key: `order:to:${recipient}`, ...ORDER_CREATE_PER_EMAIL },
   ];
 }

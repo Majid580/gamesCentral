@@ -87,8 +87,13 @@ const nextConfig: NextConfig = {
    */
   output: process.env.BUILD_STANDALONE === "1" ? "standalone" : undefined,
 
-  // Mongoose relies on Node.js internals and must not be bundled.
-  serverExternalPackages: ["mongoose"],
+  /*
+   * Left for Node to require at runtime rather than bundled. Both use dynamic
+   * requires that a bundler cannot follow — nodemailer resolves its transports
+   * and DNS helpers that way — and bundling them produces failures that only
+   * appear in a production build.
+   */
+  serverExternalPackages: ["mongoose", "nodemailer"],
 
   images: {
     formats: ["image/avif", "image/webp"],

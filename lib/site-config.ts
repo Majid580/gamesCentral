@@ -5,12 +5,17 @@
  * address and phone number during merchant review (Section 14), so these must
  * stay real and reachable — do not replace them with examples while testing.
  *
- * TWO ITEMS STILL NEED THE OWNER before merchant review:
- *   - `email` assumes support@gamescentral.pk. **That mailbox has to exist and
- *     be monitored** — it is printed on every legal page as the address for
- *     data requests, and PayFast may write to it. If the domain is not set up
- *     yet, point this at a working inbox instead.
+ * ONE ITEM STILL NEEDS THE OWNER before merchant review:
  *   - `domain` is unconfirmed. Everything else here is the owner's real data.
+ *
+ * `email` is a Gmail address by the owner's decision (2026-08-18), replacing
+ * the assumed support@gamescentral.pk — a working inbox that is actually read
+ * beats a branded one that bounces, and this address is printed on every legal
+ * page as the contact for refunds and data requests. Worth revisiting before
+ * merchant review: a payment provider verifying a business generally expects
+ * an address on the business's own domain, so moving to
+ * support@gamescentral.pk once the mailbox exists is a one-line change here
+ * plus the SMTP_* variables.
  */
 
 export const siteConfig = {
@@ -29,8 +34,8 @@ export const siteConfig = {
       "Punjab, Pakistan",
     ],
     phone: "+92 322 4810876",
-    /** TODO(owner): this mailbox must exist and be monitored — see above. */
-    email: "support@gamescentral.pk",
+    /** Owner-supplied working inbox (2026-08-18). See the note above. */
+    email: "gamersretro50@gmail.com",
     /** The owner's existing WhatsApp line, same number as the phone. */
     whatsapp: "+92 322 4810876",
     hours: "Support hours: 10:00–22:00 PKT, seven days a week",

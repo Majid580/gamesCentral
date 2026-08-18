@@ -47,3 +47,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Rendered email previews (npm run email:preview) — local inspection only.
+.email-preview/

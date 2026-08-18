@@ -2,7 +2,8 @@ import "server-only";
 
 import { connectToDatabase } from "@/lib/models/db";
 import { OrderModel } from "@/lib/models/order";
-import { fulfilOrder } from "@/lib/services/fulfilment";
+import { notifyOrderNeedsAttention } from "@/lib/services/email/notify";
+import { fulfilOrder, loadOrderEmailFacts } from "@/lib/services/fulfilment";
 
 /**
  * The safety net under fulfilment.
@@ -237,6 +238,22 @@ async function releaseStalledFulfilling(): Promise<number> {
         orderId: order.orderId,
         hadCallInFlight: Boolean(inFlight),
       });
+
+      /*
+       * A stalled order is the case where nobody would otherwise find out. It
+       * got here because the process handling it died, so there is no request
+       * left to report anything and no operator watching — this notification
+       * is the only thing standing between a paid customer and silence.
+       */
+      const facts = await loadOrderEmailFacts(order._id);
+      if (facts) {
+        notifyOrderNeedsAttention({
+          facts,
+          outstanding: inFlight ? [inFlight.supplierProductId] : [],
+          reason: note,
+          needsDashboardCheck: Boolean(inFlight),
+        });
+      }
     }
   }
 

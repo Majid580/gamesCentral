@@ -9,6 +9,7 @@ import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { GameModel } from "@/lib/models/game";
 import { OrderModel, generateOrderId } from "@/lib/models/order";
 import { ProductModel } from "@/lib/models/product";
+import { notifyOrderSaved } from "@/lib/services/email/notify";
 import { normalisePkPhone } from "@/lib/utils/phone";
 
 /**
@@ -135,6 +136,28 @@ export async function createPendingOrder(
     contactEmail: input.contactEmail,
     contactPhone: input.contactPhone,
     contactPhoneNormalised: normalisePkPhone(input.contactPhone),
+  });
+
+  /*
+   * Sent here, immediately, and never awaited.
+   *
+   * The order ID exists nowhere else the customer can reach: they are about to
+   * be redirected to a payment page, and if they close the tab the tracking
+   * form cannot help someone who does not have it. Waiting until payment
+   * succeeds would withhold it from exactly the people most likely to need
+   * support.
+   *
+   * A failing mailbox must not fail an order that has already been written, so
+   * this cannot throw — see `fireAndForget` in the notify module.
+   */
+  notifyOrderSaved({
+    orderId: order.orderId,
+    displayName: product.displayName,
+    pricePkr: order.pricePkr,
+    playerId: order.playerId,
+    zoneId: order.zoneId ?? null,
+    confirmedUsername: order.confirmedUsername ?? null,
+    contactEmail: order.contactEmail,
   });
 
   return {
