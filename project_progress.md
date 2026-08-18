@@ -55,7 +55,25 @@ tree changes except that npm stops refusing to place it.
   call site is `nodemailer.createTransport()` in `lib/services/email/transport.ts`,
   untouched.
 
-**Open, needing the owner**
+**Resolved same day**
+
+The Vercel project variables were all present, correctly targeted at Production
+and Preview, and all EMPTY — the shape you get from pasting `.env.example`
+(where every value is deliberately blank) instead of `.env.local`. Three
+deploys were spent theorising about sensitive-variable semantics and
+environment targeting before a temporary diagnostic in `next.config.ts`
+settled it by printing key NAMES and set/EMPTY/ABSENT status — never values —
+into the build log. Every key read `EMPTY`. Re-set from `.env.local` via
+`vercel env add --value --force`, the build prerendered `/` from Atlas and
+went green. Lesson worth keeping: `requireEnv` reports an empty string as
+"Missing", which reads like an absent variable and sends you looking in the
+wrong place. The diagnostic was reverted; it is a good tool to reach for again.
+
+**Deployment is live** at https://games-central-ecs3.vercel.app — production,
+gated by Vercel Authentication (Deployment Protection), so only ECS team
+members can open it until that setting is changed.
+
+**Previously open, now closed**
 
 - The Vercel project `ecs3/games-central` has `SMILEONE_ALLOW_FULFILMENT` set
   on Production and Preview. Vercel marks it Sensitive, so its value cannot be

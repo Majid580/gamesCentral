@@ -118,6 +118,7 @@ completed_features:
   - "Double Diamonds now name the first-recharge condition in all three places a customer decides — section blurb, a line under the bonus badge on every card, and a checkout notice above the pay button (rendered only for double_diamonds; confirmed absent on ml-dia-1050)"
 
   - "Deploy fix 2026-08-18: npm `overrides` pins next-auth's peerOptional nodemailer to the root ^9. Eight Vercel builds had died in npm install with ERESOLVE before compiling a line. The ^9 pin above is what created the conflict; the dev machine never saw it because node_modules was already resolved with --legacy-peer-deps. Verified by clean install in a pristine directory, and it would have broken the Hostinger build identically."
+  - "Vercel production deployment LIVE 2026-08-18: https://games-central-ecs3.vercel.app — install fixed, env values re-set from .env.local, Atlas allowlisted 0.0.0.0/0, / prerendered from Atlas at build time. Delivery gate absent from Vercel env; PayFast still unset so checkout tells customers online payment is not live."
 in_progress_features: []
 
 pending_features:
@@ -144,7 +145,14 @@ known_issues:
     Enforced by lib/services/smileone/safety.ts. Do not remove that gate and do
     not set SMILEONE_ALLOW_FULFILMENT. Full rules in LIVE_ACCOUNT_SAFETY.md.
   - |
-    VERCEL ENV, UNRESOLVED — the project ecs3/games-central has
+    RESOLVED 2026-08-18 — the Vercel variables were all present, correctly
+    targeted, and all EMPTY (pasted from .env.example, not .env.local). Re-set
+    from .env.local with `vercel env add --value --force`; the build then
+    prerendered / from Atlas and went green. Kept because the symptom is
+    misleading: requireEnv reports an empty string as "Missing", which reads
+    like an absent variable. If it recurs, print key names and set/EMPTY/ABSENT
+    from next.config.ts — it runs on Vercel and settles it in one deploy.
+    Historical: the project ecs3/games-central had
     SMILEONE_ALLOW_FULFILMENT set on Production AND Preview. Vercel marks it
     Sensitive, so the value cannot be read back through the API or the CLI;
     safety.ts opens the gate on the exact string "1". It must not exist on any
@@ -435,8 +443,7 @@ next_steps:
   - "PayFast: get merchant credentials + the hosted-checkout field guide, confirm the two guessed items, then set PAYFAST_FIELDS_CONFIRMED=1. Nothing else is waiting on anything."
 
   # --- owner actions, none of them blocking ---
-  - "VERCEL, BEFORE THE NEXT DEPLOY: delete SMILEONE_ALLOW_FULFILMENT from Production and Preview (see known_issues), and delete BUILD_STANDALONE and SMILEONE_STUB from Vercel."
-  - "VERCEL: MongoDB Atlas Network Access needs 0.0.0.0/0 — the home page prerenders at build time and queries Atlas, and Vercel build IPs are dynamic. The DB user credentials stay the real gate."
+  - "VERCEL: to show the site to anyone outside the ECS team, change Settings > Deployment Protection > Vercel Authentication from all deployments to preview-only. Production is currently gated behind Vercel SSO."
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
   - "PRODUCTION: set the SMTP_* variables on the production host too. They live only in the owner's local .env.local right now, so a deployed build sends nothing until they are configured there."
   - "Confirm the production domain (gamescentral.pk is assumed, not confirmed)"
