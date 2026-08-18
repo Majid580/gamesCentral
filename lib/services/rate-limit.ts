@@ -92,11 +92,25 @@ export async function checkRateLimit(
  * wrong index makes every visitor share one bucket.
  */
 export function clientIp(headers: Headers): string {
-  return (
+  const raw =
     headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     headers.get("x-real-ip") ||
-    "unknown"
-  );
+    "unknown";
+
+  /*
+   * Truncated, because this value is entirely attacker-controlled and every
+   * allowed request writes it into the database as part of a rate-limit key.
+   * Node accepts headers up to 16KB, so without a bound each request could
+   * store several kilobytes of someone's choosing, indefinitely, on an indexed
+   * field — a slow way to fill a collection using the very mechanism that is
+   * supposed to be limiting the caller.
+   *
+   * 45 characters clears the longest real address (an IPv6 address with an
+   * embedded IPv4 tail is 45), so no genuine client is affected. Two clients
+   * that only differ past that character share a bucket, which is the correct
+   * failure: the shared bucket is more restrictive, never less.
+   */
+  return raw.slice(0, 45);
 }
 
 /* ------------------------------------------------------------------ */

@@ -11,10 +11,44 @@ const isDev = process.env.NODE_ENV === "development";
  * (security hardening) revisits this to apply nonce + 'strict-dynamic' on the
  * dynamic routes only. `'unsafe-eval'` is dev-only (React Refresh needs it).
  *
- * `form-action` is intentionally broad enough for the PayFast redirect handoff;
- * the exact PayFast origin gets pinned in Phase 5 once the hosted-checkout
- * endpoint is confirmed.
+ * `form-action` MUST list PayFast, and this is not a nicety. The handoff is a
+ * real cross-origin form POST built in `submitToGateway()`, so `'self'` alone
+ * makes the browser refuse to submit it — the customer clicks Pay and simply
+ * nothing happens, with the reason only in the console. See PAYFAST_ORIGINS.
  */
+
+/**
+ * Origins the checkout form is allowed to POST to.
+ *
+ * Mirrors `BASE_URLS` in lib/services/payfast/client.ts. Both hosts are listed
+ * rather than switching on PAYFAST_MODE, because this header is baked at build
+ * time while the mode is read at runtime — deriving it from the mode would let
+ * a sandbox build silently block a production payment. Listing both costs
+ * nothing: they are the same company's gateway, and neither is somewhere an
+ * attacker would want a form sent.
+ *
+ * ⚠️ `PAYFAST_API_BASE_URL` is read here too, but it is read AT BUILD TIME.
+ * Overriding the host on a running server without rebuilding leaves this
+ * header stale and payments will be blocked. Rebuild after changing it.
+ */
+const PAYFAST_ORIGINS = (() => {
+  const known = ["https://ipguat.apps.net.pk", "https://ipg1.apps.net.pk"];
+
+  const override = process.env.PAYFAST_API_BASE_URL?.trim();
+  if (override) {
+    try {
+      known.push(new URL(override).origin);
+    } catch {
+      // A malformed override is a configuration error, not a reason to emit a
+      // broken header. The known hosts still apply and the client will fail
+      // loudly on its own.
+      console.warn("[csp] PAYFAST_API_BASE_URL is not a valid URL; ignoring it");
+    }
+  }
+
+  return [...new Set(known)];
+})();
+
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -24,7 +58,7 @@ const csp = [
   `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  `form-action 'self' ${PAYFAST_ORIGINS.join(" ")}`,
   "object-src 'none'",
   "upgrade-insecure-requests",
 ].join("; ");

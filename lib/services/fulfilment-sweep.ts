@@ -48,6 +48,25 @@ const STALLED_FULFILLING_MS = 15 * 60 * 1000;
 /** Bounded so one run can never become an unbounded burst of supplier calls. */
 const MAX_PER_RUN = 25;
 
+/**
+ * Wall-clock budget for one sweep, and the reason it exists is arithmetic
+ * rather than caution.
+ *
+ * A sweep can pick up 25 orders; the largest plan in the catalogue is ten
+ * supplier calls; each call can take the client's full 12-second timeout.
+ * That upper bound is fifty minutes inside a single HTTP request — long past
+ * any reverse proxy's patience, and a proxy that gives up kills the process
+ * mid-delivery, which is exactly the state this whole module exists to
+ * prevent.
+ *
+ * So the sweep stops *starting* orders once the budget is spent and leaves the
+ * rest for the next run. Nothing is dropped: an order the sweeper did not
+ * reach is still `paid`, still past its grace period, and still first in line
+ * next time. Checked between orders, never mid-order — abandoning an order
+ * halfway through its packs to save a few seconds would be self-defeating.
+ */
+const RUN_BUDGET_MS = 60 * 1000;
+
 export type SweepReport = {
   /** Stalled `fulfilling` orders moved into the admin queue. */
   released: number;
@@ -56,6 +75,10 @@ export type SweepReport = {
   fulfilled: number;
   handedToAdmin: number;
   skipped: number;
+  /** Orders that threw. They keep their status and are retried next run. */
+  errored: number;
+  /** Candidates left for the next run because the time budget ran out. */
+  deferred: number;
   orders: { orderId: string; state: string; detail: string }[];
 };
 
@@ -79,38 +102,70 @@ export async function sweepUnfulfilledOrders(): Promise<SweepReport> {
     fulfilled: 0,
     handedToAdmin: 0,
     skipped: 0,
+    errored: 0,
+    deferred: 0,
     orders: [],
   };
 
-  for (const candidate of candidates) {
+  const deadline = Date.now() + RUN_BUDGET_MS;
+
+  for (const [index, candidate] of candidates.entries()) {
+    if (Date.now() > deadline) {
+      report.deferred = candidates.length - index;
+      console.warn("[fulfilment] sweep hit its time budget", {
+        done: index,
+        deferred: report.deferred,
+      });
+      break;
+    }
+
     /*
+     * Each order is isolated. Without this, one order that throws — an Atlas
+     * blip, a document that fails validation — aborts the whole batch and
+     * every paid order behind it waits for the next run. The one that threw is
+     * not lost either: it keeps its status, so it is a candidate again next
+     * time.
+     *
      * `allowRetry` stays false. The sweeper's job is orders nobody picked up,
      * not orders that were tried and failed — those are in
      * `paid_pending_fulfillment`, where a person has to decide, because the
      * reason they failed is usually still true. An automatic loop retrying
      * them would hammer the supplier with the same doomed call every minute.
      */
-    const outcome = await fulfilOrder(candidate.orderId, { triggeredBy: "sweeper" });
+    try {
+      const outcome = await fulfilOrder(candidate.orderId, { triggeredBy: "sweeper" });
 
-    if (outcome.ok) {
-      report.fulfilled += 1;
-    } else if (outcome.state === "not_claimable") {
-      // Someone else got there first. Normal, and not a problem.
-      report.skipped += 1;
-    } else {
-      report.handedToAdmin += 1;
+      if (outcome.ok) {
+        report.fulfilled += 1;
+      } else if (outcome.state === "not_claimable") {
+        // Someone else got there first. Normal, and not a problem.
+        report.skipped += 1;
+      } else {
+        report.handedToAdmin += 1;
+      }
+
+      report.orders.push({
+        orderId: candidate.orderId,
+        state: outcome.state,
+        detail: outcome.detail,
+      });
+    } catch (error) {
+      report.errored += 1;
+      const detail = error instanceof Error ? error.message : String(error);
+
+      console.error("[fulfilment] sweep threw on an order", {
+        orderId: candidate.orderId,
+        detail,
+      });
+
+      report.orders.push({ orderId: candidate.orderId, state: "threw", detail });
     }
-
-    report.orders.push({
-      orderId: candidate.orderId,
-      state: outcome.state,
-      detail: outcome.detail,
-    });
   }
 
-  if (report.handedToAdmin > 0 || released > 0) {
+  if (report.handedToAdmin > 0 || report.errored > 0 || released > 0) {
     console.error("[fulfilment] sweeper put orders in front of an operator", {
       handedToAdmin: report.handedToAdmin,
+      errored: report.errored,
       released,
     });
   }

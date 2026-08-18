@@ -104,6 +104,10 @@ completed_features:
   - "Phase 7: partial delivery is surfaced to the customer with the real diamond count ('706 diamonds have reached your account so far') rather than letting them discover it in-game and conclude they were cheated"
   - "Phase 7: lookup normalisation — order IDs matched loosely (gc65tcgwgwen finds GC-65TCG-WGWEN) and phones matched on a normalised form via Order.contactPhoneNormalised, so `0322 4810876` at checkout and `+923224810876` at lookup are the same person"
   - "Phase 7: /api/orders/lookup rate limited 20/IP/10min AND 10 per ORDER ID per hour — the per-order rule is the one that protects the second factor, and x-forwarded-for spoofing cannot evade it. Verified: 429 with Retry-After 3581."
+  - "Security: form-action in next.config.ts now lists both PayFast hosts (+ any PAYFAST_API_BASE_URL origin). It was 'self', which would have made the browser silently refuse the cross-origin checkout POST on the first real payment."
+  - "Security: fulfilment sweep has a 60s wall-clock budget (25 orders x 10 calls x 12s timeout = 50 min inside one request, which a reverse proxy would kill mid-delivery) and per-order try/catch so one throw cannot abort the batch"
+  - "Security: clientIp() truncated to 45 chars — it is attacker-controlled and every allowed request writes it to an indexed field as a rate-limit key"
+  - "Security: cron secret comparison hashes both sides before timingSafeEqual, removing the length oracle the early-return length check created"
   - "Double Diamonds now name the first-recharge condition in all three places a customer decides — section blurb, a line under the bonus badge on every card, and a checkout notice above the pay button (rendered only for double_diamonds; confirmed absent on ml-dia-1050)"
 
 in_progress_features: []
@@ -154,7 +158,25 @@ known_issues:
     how this interacts with the top-level change_price before computing any
     final charge. It also listed product_id 20340, which is NOT in the
     productlist response — another sign the catalogue mapping is not settled.
-  - "CSP in next.config.ts uses 'unsafe-inline' for script-src to keep marketing pages statically rendered. Tighten to nonce + strict-dynamic on dynamic routes in Phase 9. See node_modules/next/dist/docs/**/content-security-policy.md. NOTE: the pre-paint theme script in app/layout.tsx needs that nonce when this lands."
+  - |
+    RESOLVED AS A DECISION 2026-08-18, not deferred again — do not re-open
+    without a new reason. script-src keeps 'unsafe-inline'. The only
+    dangerouslySetInnerHTML in the codebase is the pre-paint theme script and
+    its content is a compile-time constant; React escapes everything else, so
+    there is no injection sink for a nonce to defend. A nonce is per-request
+    and that script lives in the shared root layout, so adopting one forces the
+    marketing and legal pages dynamic and gives up their static rendering — a
+    real cost against a hypothetical benefit. Revisit only if a genuine HTML
+    sink is introduced.
+  - |
+    form-action MUST list PayFast and is baked at BUILD time. The checkout
+    handoff is a real cross-origin form POST (submitToGateway in
+    checkout-form.tsx), so 'self' alone makes the browser refuse it — the
+    customer clicks Pay and nothing happens, with the reason only in the
+    console. next.config.ts lists both hosts plus any PAYFAST_API_BASE_URL
+    origin. ⚠️ Changing PAYFAST_API_BASE_URL on a running server without
+    rebuilding leaves the header stale and blocks payments.
+  - "The admin login `?from=` redirect is already guarded against open redirect (startsWith('/admin') + explicit '//' rejection). Checked 2026-08-18; recorded so it is not re-derived."
   - "The pre-paint theme script triggers a React dev-only console warning about script tags in a component tree. Intentional: next/script's beforeInteractive replays inline code after the framework chunks and would reintroduce a theme flash. Do not 'fix' it — see the comment in app/layout.tsx."
   - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
   - |

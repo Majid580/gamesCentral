@@ -9,6 +9,7 @@ import {
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { GameModel } from "@/lib/models/game";
 import { OrderModel, type OrderStatus } from "@/lib/models/order";
+import type { Types } from "mongoose";
 import { createSupplierOrder, SmileOneError } from "@/lib/services/smileone/client";
 import { SmileOneSafetyError } from "@/lib/services/smileone/safety";
 
@@ -509,7 +510,7 @@ export async function fulfilOrder(
  * Note where it does NOT go: `failed`. The customer has paid, and the status
  * machine has no edge from `paid` to `failed` for exactly this reason (rule 8).
  */
-async function releaseToPending(id: unknown, note: string): Promise<void> {
+async function releaseToPending(id: Types.ObjectId, note: string): Promise<void> {
   await OrderModel.updateOne(
     { _id: id, status: "fulfilling" },
     {
@@ -526,7 +527,7 @@ async function releaseToPending(id: unknown, note: string): Promise<void> {
   );
 }
 
-async function markFulfilled(id: unknown, note: string): Promise<void> {
+async function markFulfilled(id: Types.ObjectId, note: string): Promise<void> {
   await OrderModel.updateOne(
     { _id: id, status: "fulfilling" },
     {

@@ -5,6 +5,101 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-18 — Security pass on the new surface, and a CSP that would have blocked every payment
+
+`CLAUDE.md` says to run a security review after anything touching money or
+auth. The previous entry touched all of it, so this is that pass. Four findings,
+one of which was waiting to break the shop on its first real payment.
+
+**The CSP would have blocked the PayFast handoff. Silently.**
+
+`form-action 'self'` — with a comment claiming it was "intentionally broad
+enough for the PayFast redirect handoff". It was not. `submitToGateway()`
+builds a real form and POSTs it cross-origin to PayFast, and `'self'` makes the
+browser refuse to submit. The customer clicks Pay, nothing happens, and the
+only explanation is a line in a console nobody has open.
+
+This is the worst kind of bug to meet live: it appears the moment real
+credentials arrive, it looks like a PayFast problem rather than ours, and the
+obvious debugging instinct — checking the request in the network tab — shows no
+request at all.
+
+`form-action` now lists both PayFast hosts, mirroring `BASE_URLS` in the
+client. Both are listed rather than switching on `PAYFAST_MODE`, because the
+header is baked at build time while the mode is read at runtime, so deriving it
+from the mode would let a sandbox build block a production payment. It also
+picks up `PAYFAST_API_BASE_URL`, so the single env change that corrects the
+host when PayFast confirms it now corrects the CSP too. Verified both ways: the
+header carries the two known hosts, and adding an override put a third origin in
+it. **That override is read at build time, so changing the host on a running
+server needs a rebuild** — noted next to the variable in `.env.example`, because
+the failure mode is exactly the silent one above.
+
+**A sweep could run for fifty minutes**
+
+25 orders per run × up to 10 supplier calls each × a 12-second timeout. That
+upper bound sits inside a single HTTP request, well past any reverse proxy's
+patience — and a proxy that gives up kills the process mid-delivery, which is
+the precise situation the sweeper exists to clean up. It would have been a
+recovery mechanism that manufactures the thing it recovers from.
+
+There is now a 60-second budget, checked *between* orders and never mid-order:
+abandoning an order halfway through its packs to save a few seconds would be
+self-defeating. Orders it does not reach are still `paid`, still past their
+grace period, and first in line next run. The report says how many were
+deferred.
+
+**One bad order took the whole batch down with it**
+
+Any throw inside the sweep loop — an Atlas blip, a document that fails
+validation — aborted the run and left every paid order behind it waiting. Each
+order is now isolated in its own try/catch and counted as `errored`; it keeps
+its status, so it is a candidate again next run rather than being skipped
+forever.
+
+**Two smaller ones**
+
+`clientIp()` returned the `x-forwarded-for` value unbounded, and every allowed
+request writes it into the database as part of a rate-limit key. Node accepts
+16KB of headers, so each request could store kilobytes of an attacker's
+choosing on an indexed field — filling a collection using the very mechanism
+meant to limit them. Truncated to 45 characters, which is the length of the
+longest real IPv6 address, so no genuine client is affected and two clients that
+differ only past it share a bucket. Sharing is the correct failure here: a
+shared bucket is more restrictive, never less.
+
+The cron secret comparison returned early on a length mismatch — the standard
+way to keep `timingSafeEqual` from throwing, and quietly a length oracle. Both
+sides are now hashed to a fixed 32 bytes first, so every comparison is the same
+size whatever was presented.
+
+**Checked and deliberately left alone**
+
+The `?from=` parameter on the admin login redirect is already guarded against
+becoming an open redirect (`startsWith("/admin")` plus an explicit `//`
+rejection) — worth recording so the next reviewer does not re-derive it.
+
+`script-src 'unsafe-inline'` **stays**, and this is now a decision rather than a
+deferral. The only `dangerouslySetInnerHTML` in the codebase is the pre-paint
+theme script, whose content is a compile-time constant; React escapes
+everything else, so there is no injection sink for a nonce to defend. A nonce
+must be generated per request, and the inline script lives in the shared root
+layout — which means adopting one forces the marketing and legal pages dynamic
+and gives up their static rendering. That is a real, measured cost against a
+hypothetical benefit. Revisit if a genuine HTML sink is ever introduced; the
+note in `next.config.ts` says so.
+
+**Verified**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` clean. The fulfilment drill
+still passes in gated mode, all 8 checks. Cron auth still answers 404 for a
+missing secret, a wrong secret of the same length, and a short one, and 200 for
+the real one. CSP header confirmed by request, with and without an override.
+
+Nothing was delivered. `createorder` has still never been called.
+
+---
+
 ## 2026-08-18 — Everything that does not need PayFast: delivery, tracking, and an honest double-diamonds claim
 
 PayFast is waiting on the merchant account, so this session took the rest of

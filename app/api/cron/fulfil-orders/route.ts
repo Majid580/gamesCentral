@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
@@ -20,11 +20,18 @@ import { sweepUnfulfilledOrders } from "@/lib/services/fulfilment-sweep";
 
 export const dynamic = "force-dynamic";
 
-/** Constant-time, and never throws on a length mismatch. */
+/**
+ * Constant-time comparison that also hides the secret's length.
+ *
+ * `timingSafeEqual` throws on differently-sized buffers, so the usual fix is
+ * to compare lengths first and return early — which quietly turns the length
+ * into an oracle a prober can measure. Hashing both sides to a fixed 32 bytes
+ * removes that: every comparison is the same size and takes the same time,
+ * whatever was presented.
+ */
 function secretMatches(presented: string, expected: string): boolean {
-  const a = Buffer.from(presented);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
+  const a = createHash("sha256").update(presented).digest();
+  const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b);
 }
 
@@ -64,6 +71,8 @@ export async function POST(request: Request) {
     fulfilled: report.fulfilled,
     handedToAdmin: report.handedToAdmin,
     skipped: report.skipped,
+    errored: report.errored,
+    deferred: report.deferred,
   });
 
   /*
@@ -77,5 +86,7 @@ export async function POST(request: Request) {
     fulfilled: report.fulfilled,
     handedToAdmin: report.handedToAdmin,
     skipped: report.skipped,
+    errored: report.errored,
+    deferred: report.deferred,
   });
 }
