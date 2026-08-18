@@ -137,10 +137,20 @@ function Figure({ product }: { product: StorefrontProduct }) {
           </span>
         </div>
         {/* The bonus is the entire offer, so it is stated in words and not
-            left for the customer to infer from "50 + 50". */}
+            left for the customer to infer from "55 + 55". */}
         <p className="mt-2 inline-flex items-center rounded-md bg-accent-soft px-2 py-1 text-xs font-semibold text-accent">
           Pay for {diamondAmount.toLocaleString("en-PK")}, get{" "}
           {bonusDiamonds.toLocaleString("en-PK")} free
+        </p>
+        {/*
+          The condition, on the card rather than only at checkout. The doubling
+          is Moonton's first-recharge bonus, not something we deliver, and a
+          customer who has already used it at this tier gets the paid amount
+          only. We cannot detect that in advance, so the honest move is to put
+          the qualifier where the offer is made.
+        */}
+        <p className="mt-1.5 text-[0.6875rem] leading-snug text-muted-foreground">
+          First top-up at this tier only
         </p>
       </div>
     );
@@ -195,9 +205,10 @@ function describe(product: StorefrontProduct): string {
   const { kind, displayName, diamondAmount, bonusDiamonds } = product;
 
   if (kind === "double_diamonds" && diamondAmount && bonusDiamonds) {
-    return `${displayName}: pay for ${diamondAmount} diamonds and receive ${
-      diamondAmount + bonusDiamonds
-    } in total`;
+    return (
+      `${displayName}: pay for ${diamondAmount} diamonds and receive ` +
+      `${diamondAmount + bonusDiamonds} in total on your first top-up at this tier`
+    );
   }
   if (kind === "diamonds" && diamondAmount) {
     return `${diamondAmount} diamonds`;

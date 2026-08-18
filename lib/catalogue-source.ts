@@ -129,8 +129,22 @@ export const KIND_LABELS: Record<ProductKind, { title: string; blurb: string }> 
     blurb: "Standard top-ups, delivered to your account in minutes.",
   },
   double_diamonds: {
+    /*
+     * The blurb names the condition, and it has to.
+     *
+     * We deliver the paid half; the matching half is Moonton's own
+     * first-recharge bonus, granted in-game on the first purchase of that
+     * tier. A customer who has already used their double on this tier will
+     * receive only the paid amount, and `getrole` does not report promo
+     * eligibility, so we cannot detect it beforehand or warn them personally.
+     *
+     * That leaves saying it plainly, in the place they decide. Anything vaguer
+     * reads as a bait-and-switch to the customer it happens to, and they are
+     * right — see the blocker in project_state.yaml.
+     */
     title: "Double Diamonds",
-    blurb: "Pay for the first amount, receive it twice over.",
+    blurb:
+      "Pay for the first amount and the game doubles it — on your first top-up at each tier.",
   },
   pass: {
     title: "Passes",

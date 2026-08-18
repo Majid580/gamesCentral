@@ -154,3 +154,38 @@ const SETTLE_PER_IP = { limit: 20, windowMs: 5 * 60 * 1000 };
 export function paymentSettleRules(ip: string): RateLimitRule[] {
   return [{ key: `settle:ip:${ip}`, ...SETTLE_PER_IP }];
 }
+
+/* ------------------------------------------------------------------ */
+/* Guest order lookup                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Per address: a customer checks one order a few times while they wait.
+ * Twenty in ten minutes covers impatience and stops a list being worked
+ * through.
+ */
+const ORDER_LOOKUP_PER_IP = { limit: 20, windowMs: 10 * 60 * 1000 };
+
+/**
+ * Per order ID: the rule that actually protects the second factor.
+ *
+ * Order IDs travel — they are printed on a confirmation page, forwarded over
+ * WhatsApp, and left in browser history — so the realistic attack is someone
+ * holding an ID and guessing the email or phone that goes with it. Counting
+ * attempts against the ID caps that at ten tries an hour no matter how many
+ * addresses they come from, which spoofing `x-forwarded-for` cannot evade.
+ *
+ * The cost is that someone who knows your order ID can make you wait an hour
+ * to check it. That is a nuisance; the alternative exposes a stranger's
+ * delivery target and contact details. There is deliberately no global rule
+ * here — one attacker must not be able to stop everyone else from finding
+ * their orders.
+ */
+const ORDER_LOOKUP_PER_ORDER = { limit: 10, windowMs: 60 * 60 * 1000 };
+
+export function orderLookupRules(ip: string, orderId: string): RateLimitRule[] {
+  return [
+    { key: `track:ip:${ip}`, ...ORDER_LOOKUP_PER_IP },
+    { key: `track:order:${orderId}`, ...ORDER_LOOKUP_PER_ORDER },
+  ];
+}

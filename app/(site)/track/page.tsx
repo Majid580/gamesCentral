@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { TrackForm } from "@/components/track/track-form";
 import { ButtonLink } from "@/components/ui/button";
 import { siteConfig } from "@/lib/site-config";
 
@@ -7,16 +8,18 @@ export const metadata: Metadata = {
   title: "Track your order",
   description:
     "Look up a Games Central order using your order ID and the email or phone number you used at checkout.",
+  // An order-lookup page has nothing to index and every reason not to appear
+  // in a search result alongside somebody's order ID.
+  robots: { index: false, follow: true },
 };
 
 /**
- * Placeholder for the Phase 7 order-lookup flow.
+ * Guest order lookup (Section 6, step 7).
  *
- * Deliberately NOT a non-functional form: a lookup box that silently does
- * nothing is worse than an honest "not ready yet" state. The real
- * implementation requires the Order model (Phase 4) and must be built with an
- * IDOR guard — order ID alone must never be enough to read an order, which is
- * why the lookup will require the matching contact email or phone too.
+ * There are no customer accounts in v1, so this is how someone checks an order
+ * after closing the tab. The lookup requires the order ID *and* the contact
+ * detail from checkout — the ID alone would be an IDOR, and it is exactly the
+ * sort of string that gets forwarded in a message.
  */
 export default function TrackOrderPage() {
   return (
@@ -29,29 +32,29 @@ export default function TrackOrderPage() {
         used at checkout.
       </p>
 
+      <TrackForm />
+
       <div
         data-reveal
-        className="facet-edge mt-10 rounded-2xl border border-border bg-card p-6 [--facet-tone:var(--spectrum-2)] sm:p-8"
+        className="mt-10 rounded-2xl border border-border bg-card p-6 sm:p-8"
       >
         <h2 className="font-display text-lg font-semibold">
-          Order tracking isn&apos;t live yet
+          Can&apos;t find your order?
         </h2>
         <p className="mt-3 leading-relaxed text-muted-foreground">
-          This store is still being built and is not accepting orders. Once
-          checkout goes live, every order will get an ID you can look up here.
-        </p>
-        <p className="mt-4 leading-relaxed text-muted-foreground">
-          If you have an existing order placed through WhatsApp, contact us
-          directly at{" "}
-          <span className="text-foreground">{siteConfig.contact.phone}</span>{" "}
-          and we will check it for you.
+          Use the same email or phone number you entered at checkout — a
+          different one won&apos;t match, even for the right order ID. If you
+          placed an order through WhatsApp, or you no longer have your order ID,
+          message us at{" "}
+          <span className="text-foreground">{siteConfig.contact.phone}</span> and
+          we will find it for you.
         </p>
 
-        <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-          <ButtonLink href="/contact" variant="primary" size="md">
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <ButtonLink href="/contact" variant="outline" size="md">
             Contact support
           </ButtonLink>
-          <ButtonLink href="/#packages" variant="outline" size="md">
+          <ButtonLink href="/#packages" variant="ghost" size="md">
             View packages
           </ButtonLink>
         </div>

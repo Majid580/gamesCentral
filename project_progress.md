@@ -5,6 +5,192 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-18 — Everything that does not need PayFast: delivery, tracking, and an honest double-diamonds claim
+
+PayFast is waiting on the merchant account, so this session took the rest of
+the shop as far as it goes without them. Two things were genuinely missing —
+the code that delivers a paid order, and the page a customer uses to check one —
+and both are now built and exercised end to end.
+
+**The delivery executor, written but not able to deliver**
+
+`lib/services/fulfilment.ts` walks a paid order's plan and buys the outstanding
+packs. It cannot deliver anything today and that is not an accident: it calls
+`createSupplierOrder`, which goes through the gate in `smileone/safety.ts`, which
+blocks `createorder` before a socket opens. Writing it now rather than on the
+day payments go live means the money path gets reviewed calmly instead of under
+pressure.
+
+Three properties it is arranged around:
+
+*Only paid orders.* The claim is an atomic conditional update on `paid` —
+`paid_pending_fulfillment` too, but only for an explicit retry. There is no
+argument that skips it.
+
+*Never buy the same pack twice.* SmileOne's `createorder` has nowhere to put a
+reference of ours, so calling it twice buys twice, and "1050 Diamonds" is three
+separate purchases. Each call that lands is recorded on its own, and a retry
+subtracts what landed rather than replaying the plan.
+
+*Never guess about a call whose outcome is unknown.* This is the one that needed
+a new field.
+
+**`fulfilmentInFlight`, and why a paid order sometimes refuses to be retried**
+
+Between a request reaching SmileOne and our record of it being written, there is
+a window where the diamonds are gone and we do not know it. A process that dies
+in that window leaves a delivery nobody can account for. Retrying blind buys the
+pack a second time at the owner's expense; assuming it worked shorts the
+customer. Both are wrong, and no amount of care in the code makes the third
+option appear.
+
+So the marker goes down *before* the request goes out and is cleared with the
+delivery record. A run that finds it set stops, moves the order to
+`paid_pending_fulfillment` naming the pack, and tells an operator to check the
+SmileOne dashboard — the only place that actually knows. The admin screen shows
+that state as a red panel and **withholds the retry button entirely**, rather
+than offering one and hoping.
+
+The distinction that makes this bearable is which failures prove nothing was
+delivered. Exactly two do: the safety gate refusing (never dispatched) and the
+supplier answering HTTP 200 with an application-level failure status — a
+structured "no" from the party that would have done the delivering, which is
+where insufficient balance lands. Those clear the marker and the order is freely
+retryable. A timeout, a dropped connection, an HTTP 500, or a 200 we could not
+parse do not, because every one of them can happen *after* a successful
+delivery.
+
+**The sweeper, because the request that was going to deliver can go away**
+
+Delivery starts in the process that verified the payment, and is deliberately
+not awaited — a ten-pack combo is ten sequential supplier calls, and holding the
+response open for that is a page that hangs at the exact moment a customer is
+most anxious about their money. Nothing is lost if that process dies: the order
+keeps its progress, and `POST /api/cron/fulfil-orders` picks it up.
+
+A plain `CRON_SECRET`-authenticated route, not a platform cron primitive, because
+production is Hostinger. It answers **404** — not 401 — when the secret is
+missing, wrong, or shorter than 32 characters, so an unset variable can never
+leave the endpoint open and a prober cannot tell the route exists.
+
+It takes `paid` orders older than two minutes (the in-process trigger gets first
+refusal) and releases `fulfilling` orders stalled past fifteen. It deliberately
+does **not** retry `paid_pending_fulfillment`: an order is there because
+something went wrong, the reason is usually still true, and an automatic loop
+would send the same doomed call every five minutes. A person presses the button.
+
+**`npm run fulfilment:drill` — proof, not assertion**
+
+The properties worth proving are all about what happens across processes and
+retries, so mocking them in isolation would test the mock. The drill drives the
+real route, the real service and the real database, and asserts against both
+configurations the shop actually has:
+
+- **gated** (today): a paid order is not delivered, lands in the admin queue
+  with an operator instruction, and leaves no call in flight. 8 checks pass.
+- **stub** (`SMILEONE_FULFILMENT_STUB=1`): full delivery, idempotent re-sweep,
+  a half-delivered order resuming at the right pack, and every refusal path.
+  16 checks pass.
+
+It aborts if it ever sees a delivery whose supplier order id is not prefixed
+`STUB-`, so a drill against a real-delivery configuration stops instead of
+buying 26 packs of diamonds.
+
+Two branches it cannot set up on its own were verified by hand, because they
+need the server's own environment changed. With the stub told to fail on the
+third of three calls:
+
+- `unknown` — 2 packs delivered, marker retained naming pack 23, status
+  `paid_pending_fulfillment`, note reading *"…did not report back… Check the
+  SmileOne dashboard before retrying."* A second sweep left it untouched.
+- `refused` — same 2 packs, marker **cleared**, note reading *"Nothing was
+  delivered for it. Safe to retry once the cause is known."*
+
+The two failure classes behave differently, which is the entire point.
+
+**Phase 7: order tracking that works the way people actually type**
+
+`/track` is a real lookup now. It requires the order ID *and* a matching contact
+detail — the ID alone would be an IDOR, and it is precisely the sort of string
+that gets forwarded over WhatsApp. "No such order" and "wrong contact" return
+the identical message, so the ID cannot be used as an oracle for which orders
+exist.
+
+The customer never sees our status names. `paid_pending_fulfillment` is a good
+name for an operator and a frightening piece of jargon for the person who paid,
+so the controller maps every status to a six-word customer vocabulary and the
+browser gets nothing else — which also keeps our state machine off the wire.
+
+Two normalisations, both fixing the same failure: a customer who cannot find
+their own order contacts support, which is the manual workflow this site exists
+to replace.
+
+- Order IDs are matched loosely: `gc65tcgwgwen` finds `GC-65TCG-WGWEN`.
+- Phone numbers are stored normalised as well as raw. Someone who typed
+  `0322 4810876` at checkout and `+923224810876` at lookup is the same person,
+  and an exact string comparison said otherwise. The raw value stays for whoever
+  reads the order; `contactPhoneNormalised` is what matching uses.
+
+Verified in the browser with both normalisations in play at once, against a
+half-delivered fixture — which correctly reported *"706 diamonds have reached
+your account so far"* rather than leaving the customer to work it out from the
+diamond count in their game.
+
+Rate limits: 20 per IP per 10 minutes, and **10 per order ID per hour**. The
+second one is the rule that matters — order IDs travel, so the realistic attack
+is holding one and guessing the contact detail, and counting against the ID caps
+that no matter how many addresses it comes from. Spoofing `x-forwarded-for`
+does not evade it. There is no global rule here on purpose: one attacker must
+not be able to stop everyone else from checking their orders.
+
+**The double-diamonds claim, which was not quite true**
+
+Recorded as a go-live blocker and now fixed. We deliver the paid half; the
+matching half is Moonton's first-recharge bonus, granted in-game on the first
+purchase of that tier. A customer who has already used theirs receives 55
+diamonds having read "55 + 55", and `getrole` does not report promo eligibility,
+so we cannot detect it or warn them personally.
+
+That leaves saying it plainly, in the three places they decide: the section
+blurb, a line under the bonus badge on every double-diamonds card, and a notice
+in the checkout summary immediately above the pay button. The checkout notice
+renders only for `double_diamonds` — confirmed absent on `ml-dia-1050`.
+
+**Verified**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean; 16 routes,
+`/api/cron/fulfil-orders` and `/api/orders/lookup` registered. `npm run
+catalogue:verify` still 26/26 with all 6 retry cases passing. The drill passes
+in both modes. IDOR guard, the identical-message property, NoSQL operator
+injection (`{"$ne":null}` rejected by zod before it reaches Mongo), the rate
+limit tripping with a truthful `Retry-After: 3581`, and cron auth returning 404
+for both a missing and a wrong secret — all confirmed by request.
+
+Every fixture created during testing was deleted by id afterwards. **Nothing was
+delivered. `createorder` has still never been called.**
+
+**Where this leaves the shop**
+
+Everything except taking money is now built and exercised. A customer can pick a
+package, have their account verified against the real SmileOne API, place an
+order, and track it; a paid order would be delivered automatically, retried
+safely, swept up if a process died, and put in front of an operator with a
+specific instruction when it cannot be. The only missing link is the one the
+owner is waiting on.
+
+**Still needs PayFast, and nothing else does**
+
+1. Merchant credentials.
+2. The hosted-checkout field guide, to confirm the draft in
+   `hosted-checkout.ts`, then `PAYFAST_FIELDS_CONFIRMED=1`.
+3. The real API hosts, via `PAYFAST_API_BASE_URL` rather than an edit.
+
+Once payments verify end to end, the last step is the owner lifting the delivery
+gate in person — not a TODO, not this document. `LIVE_ACCOUNT_SAFETY.md` is
+unchanged and still applies.
+
+---
+
 ## 2026-08-16 — Real business details, and legal pages that are done being drafts
 
 PayFast verify the published address and phone during merchant review, and

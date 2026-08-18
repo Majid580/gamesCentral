@@ -21,6 +21,7 @@ import {
   type OrderStatus,
 } from "@/lib/models/order";
 import { ProductModel } from "@/lib/models/product";
+import { fulfilOrder } from "@/lib/services/fulfilment";
 
 /**
  * Admin data access.
@@ -193,7 +194,17 @@ export type AdminOrderDetail = AdminOrderRow & {
     outstanding: string[];
     deliveredDiamonds: number;
     complete: boolean;
+    /**
+     * A supplier call that went out and never reported back, if there is one.
+     *
+     * The single most important thing on this screen when it is set: the
+     * operator has to find out from SmileOne whether that pack was delivered,
+     * because nothing on our side can know. Retrying is blocked until they do.
+     */
+    inFlight: { label: string; startedAt: string } | null;
   };
+  /** True when "Retry delivery" should be offered. */
+  canRetryFulfilment: boolean;
 };
 
 export async function getOrder(orderId: string): Promise<AdminOrderDetail | null> {
@@ -235,7 +246,18 @@ export async function getOrder(orderId: string): Promise<AdminOrderDetail | null
     })),
     allowedTransitions: ORDER_STATUSES.filter((to) => canTransition(status, to)),
     owesFulfilment: OWED_FULFILMENT_STATUSES.includes(status),
-    fulfilment: summariseFulfilment(order.fulfilmentPlan, order.fulfilmentDeliveries),
+    fulfilment: summariseFulfilment(
+      order.fulfilmentPlan,
+      order.fulfilmentDeliveries,
+      order.fulfilmentInFlight,
+    ),
+    /*
+     * Offered only from the queue this button exists to empty. A `paid` order
+     * is already on its way and an in-flight call has to be resolved by a
+     * human first — in both cases the button would either do nothing or do
+     * something dangerous, so it is not shown.
+     */
+    canRetryFulfilment: status === "paid_pending_fulfillment" && !order.fulfilmentInFlight,
   };
 }
 
@@ -249,8 +271,18 @@ export async function getOrder(orderId: string): Promise<AdminOrderDetail | null
 function summariseFulfilment(
   rawPlan: { supplierProductId: string; quantity: number }[] | undefined,
   rawDeliveries: { supplierProductId: string }[] | undefined,
+  rawInFlight: { supplierProductId: string; startedAt: Date } | null | undefined,
 ): AdminOrderDetail["fulfilment"] {
   const deliveries = rawDeliveries ?? [];
+
+  const inFlight = rawInFlight
+    ? {
+        label:
+          SUPPLIER_PACKS[rawInFlight.supplierProductId as SupplierProductId]?.label ??
+          `Unknown pack ${rawInFlight.supplierProductId}`,
+        startedAt: rawInFlight.startedAt.toISOString(),
+      }
+    : null;
 
   if (!rawPlan?.length) {
     return {
@@ -258,6 +290,7 @@ function summariseFulfilment(
       outstanding: [],
       deliveredDiamonds: deliveredDiamonds(deliveries),
       complete: false,
+      inFlight,
     };
   }
 
@@ -273,6 +306,7 @@ function summariseFulfilment(
     ),
     deliveredDiamonds: deliveredDiamonds(deliveries),
     complete: isFullyDelivered(plan, deliveries),
+    inFlight,
   };
 }
 
@@ -335,4 +369,58 @@ export async function transitionOrder(args: {
   }
 
   return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Retry fulfilment                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Re-runs delivery for an order sitting in the paid-but-undelivered queue.
+ *
+ * This is the deliberate manual step that `paid_pending_fulfillment` exists
+ * for. The sweeper never retries these on its own: an order lands there
+ * because something went wrong, and the reason is usually still true, so an
+ * automatic loop would send the same doomed call every few minutes. A person
+ * looks at the note, fixes or accepts the cause, and presses the button.
+ *
+ * Everything that makes a retry safe lives in `fulfilOrder` and is not
+ * re-implemented here — the atomic claim, subtracting what already landed, and
+ * the refusal to touch an order whose last call never reported back. An
+ * operator cannot click their way past any of it.
+ */
+export async function retryFulfilment(orderId: string): Promise<
+  { ok: true; message: string } | { ok: false; error: string }
+> {
+  const admin = await requireAdminForAction();
+
+  const outcome = await fulfilOrder(orderId, {
+    allowRetry: true,
+    triggeredBy: `admin retry by ${admin.email}`,
+  });
+
+  if (outcome.ok) {
+    return {
+      ok: true,
+      message:
+        outcome.state === "already"
+          ? "That order was already fulfilled."
+          : `Delivered ${outcome.deliveredThisRun} outstanding pack(s).`,
+    };
+  }
+
+  /*
+   * The operator gets the real reason, unlike a customer (rule 7 is about the
+   * browser of a stranger, not the person recovering the order). The unknown
+   * case gets the instruction as well as the fact, because "check the SmileOne
+   * dashboard" is the entire content of the decision they now have to make.
+   */
+  const message =
+    outcome.state === "outcome_unknown"
+      ? `A previous attempt never reported back, so this order was not retried. Check the ` +
+        `SmileOne dashboard to see whether the pack was delivered, then either mark the ` +
+        `order fulfilled or record the delivery. (${outcome.detail})`
+      : outcome.detail;
+
+  return { ok: false, error: message };
 }

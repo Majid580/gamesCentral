@@ -245,6 +245,33 @@ const orderSchema = new Schema(
      */
     fulfilmentDeliveries: { type: [fulfilmentDeliverySchema], default: [] },
 
+    /**
+     * The one supplier call that is in flight right now, or null.
+     *
+     * Set immediately BEFORE `createorder` is dispatched and cleared straight
+     * after the delivery is recorded. It exists because the supplier's API is
+     * not idempotent and our two writes cannot be atomic with its delivery:
+     * if the process dies between the request landing and the record being
+     * written, the diamonds are gone and nothing in `fulfilmentDeliveries`
+     * knows it.
+     *
+     * A retry that finds this field set therefore refuses to guess. Blindly
+     * re-running would double-deliver at the owner's expense; assuming it
+     * succeeded would short the customer. The order goes to
+     * `paid_pending_fulfillment` naming the pack, and an operator checks the
+     * SmileOne dashboard — the one place that actually knows.
+     */
+    fulfilmentInFlight: {
+      type: new Schema(
+        {
+          supplierProductId: { type: String, required: true, trim: true },
+          startedAt: { type: Date, required: true, default: Date.now },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+
     /* ---- contact (guest checkout: no accounts in v1) ---- */
 
     contactEmail: {
@@ -254,6 +281,20 @@ const orderSchema = new Schema(
       lowercase: true,
     },
     contactPhone: { type: String, required: true, trim: true },
+
+    /**
+     * `contactPhone` reduced to `92XXXXXXXXXX`, for guest order lookup only.
+     *
+     * The raw value is kept above because it is what the customer gave us and
+     * what an operator should see. This one exists because they will type the
+     * same number differently next week — `0322 4810876` then `+923224810876` —
+     * and an exact match would tell them their own order does not exist.
+     *
+     * Null when the number could not be confidently normalised. Null must
+     * never match: `findOrderForGuest` only ever queries it with a normalised
+     * value, so a null here simply means lookup falls back to the email.
+     */
+    contactPhoneNormalised: { type: String, trim: true, default: null },
   },
   { timestamps: true },
 );
@@ -270,6 +311,10 @@ orderSchema.index({ paymentReference: 1 }, { sparse: true });
 
 // Guest order lookup is by order ID plus a contact detail.
 orderSchema.index({ contactEmail: 1, createdAt: -1 });
+// The other half of that lookup, and the admin's phone search.
+// Sparse: null for orders whose number could not be normalised, and those
+// nulls must not collide or bloat the index.
+orderSchema.index({ contactPhoneNormalised: 1 }, { sparse: true });
 
 export type Order = InferSchemaType<typeof orderSchema> & {
   _id: Types.ObjectId;

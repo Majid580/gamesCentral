@@ -5,6 +5,7 @@ import { z } from "zod";
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { OrderModel } from "@/lib/models/order";
 import { ProductModel } from "@/lib/models/product";
+import { fulfilOrderInBackground } from "@/lib/services/fulfilment";
 import {
   getAccessToken,
   isPayFastConfigured,
@@ -184,6 +185,20 @@ export async function settlePayment(
   const outcome = await verifyAndSettleOrder(parsed.data);
 
   if (outcome.settled) {
+    /*
+     * Payment confirmed, so delivery may begin — this is the only place in the
+     * app where that sentence is true (rule 2). Started here rather than inside
+     * `verifyAndSettleOrder` so verification stays a pure question with a
+     * yes/no answer, and the decision to act on it is visible in the caller.
+     *
+     * Deliberately not awaited: see `fulfilOrderInBackground`. Deliberately
+     * fired even when the payment was already settled by the other trigger —
+     * the atomic claim inside decides who actually delivers, and a webhook
+     * arriving after a redirect settled the order is precisely how a
+     * fulfilment that never started gets a second chance.
+     */
+    fulfilOrderInBackground(parsed.data, "payment settled");
+
     return { ok: true, data: { paid: true } };
   }
 

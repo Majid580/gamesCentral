@@ -1,6 +1,6 @@
 project: Games Central
-last_updated: "2026-08-16"
-current_phase: "phase-5-payfast (phases 3, 4, 8 complete; 2 unblocked — SmileOne live account connected read-only)"
+last_updated: "2026-08-18"
+current_phase: "phase-5-payfast — BLOCKED ON PAYFAST ONLY. Phases 0-4, 6, 7, 8 complete. Everything that does not need a merchant account is built and exercised; fulfilment is written and drilled but CANNOT deliver (gate closed)."
 
 # ---------------------------------------------------------------------------
 # ⛔ READ FIRST — LIVE_ACCOUNT_SAFETY.md
@@ -90,14 +90,32 @@ completed_features:
   - "Phase 5: routes /api/payments/payfast/{begin,settle,webhook}; webhook is payload-agnostic by design (reads only the basket id, never its claims) so it needs no signature to be safe"
   - "Phase 5: checkout hands off to PayFast automatically after create-order; when PayFast is unconfigured the customer lands on their order page with the order saved, never a broken form"
   - "Phase 5: /api/payments/payfast/settle rate limited 20/IP/5min; the webhook deliberately is NOT limited (dropping a gateway notification is worse than the API call it saves)"
+  - "Phase 6: fulfilment EXECUTOR (lib/services/fulfilment.ts) — atomic claim on `paid`, walks remainingCalls() one pack at a time, records each success individually, half-failure -> paid_pending_fulfillment. Written and drilled; it CANNOT deliver, because createSupplierOrder runs through the safety gate."
+  - "Phase 6: createSupplierOrder in smileone/client.ts — the createorder call, blocked by safety.ts before a socket opens. Never dispatched, not once."
+  - "Phase 6: Order.fulfilmentInFlight — marker written BEFORE the request and cleared with the delivery record. A run that finds it set refuses to retry: retrying blind double-buys, assuming success shorts the customer, and only SmileOne's dashboard knows which happened."
+  - "Phase 6: the failure classification that makes retries safe — ONLY a safety-gate refusal (never dispatched) and an upstream application-level status (a structured supplier `no`, e.g. insufficient balance) prove nothing was delivered and clear the marker. Timeout, dropped connection, HTTP 500 and an unparseable 200 all keep it, because each can happen AFTER a successful delivery."
+  - "Phase 6: fulfilment starts in the process that verified payment, deliberately NOT awaited — a 10-pack combo is 10 sequential supplier calls and the customer's return must not hang on them."
+  - "Phase 6: POST /api/cron/fulfil-orders + lib/services/fulfilment-sweep.ts — CRON_SECRET bearer auth, answers 404 (not 401) when the secret is missing/wrong/<32 chars. Takes `paid` orders older than 2 min, releases `fulfilling` stalled past 15 min. Deliberately does NOT auto-retry paid_pending_fulfillment."
+  - "Phase 6: admin retry — retryFulfilment() + a button offered ONLY from paid_pending_fulfillment with no call in flight; an unresolved in-flight call shows a red panel and withholds the button entirely"
+  - "Phase 6: npm run fulfilment:drill — drives the real route/service/database and asserts BOTH configurations: gated (8 checks) and stub (16 checks). Aborts if it ever sees a supplier order id not prefixed STUB-."
+  - "Phase 6: SMILEONE_FULFILMENT_STUB (+ _FAIL_AFTER, _FAIL_MODE) — dev-only fake deliveries so the whole path is exercisable without money. Throws on a production build; ids prefixed STUB- so a fake delivery cannot be mistaken for a real one."
+  - "Phase 7: /track is a real guest lookup — order ID AND matching contact (IDOR guard); `no such order` and `wrong contact` return the IDENTICAL message so the ID is not an oracle"
+  - "Phase 7: internal statuses never reach the browser — lib/controllers/track.ts maps all 7 to a 6-value customer vocabulary (not_paid/paid/delivering/delivered/attention/cancelled) with plain-language copy"
+  - "Phase 7: partial delivery is surfaced to the customer with the real diamond count ('706 diamonds have reached your account so far') rather than letting them discover it in-game and conclude they were cheated"
+  - "Phase 7: lookup normalisation — order IDs matched loosely (gc65tcgwgwen finds GC-65TCG-WGWEN) and phones matched on a normalised form via Order.contactPhoneNormalised, so `0322 4810876` at checkout and `+923224810876` at lookup are the same person"
+  - "Phase 7: /api/orders/lookup rate limited 20/IP/10min AND 10 per ORDER ID per hour — the per-order rule is the one that protects the second factor, and x-forwarded-for spoofing cannot evade it. Verified: 429 with Retry-After 3581."
+  - "Double Diamonds now name the first-recharge condition in all three places a customer decides — section blurb, a line under the bonus badge on every card, and a checkout notice above the pay button (rendered only for double_diamonds; confirmed absent on ml-dia-1050)"
 
 in_progress_features: []
 
 pending_features:
   - "Phase 2: productlist sync into the Product collection — blocked on the SKU/region mapping question below"
-  - "Phase 5: PayFast sandbox hosted checkout"
-  - "Phase 6: real fulfillment via createorder + idempotency — ⛔ CODE MAY BE WRITTEN, BUT NOT RUN. The delivery gate stays shut until PayFast is verified end-to-end and the owner lifts it. This line is not authorisation to call createorder."
-  - "Phase 7: order confirmation + guest status lookup"
+  - "Phase 5: PayFast sandbox hosted checkout — THE ONLY THING BLOCKING GO-LIVE. Needs merchant credentials + the hosted-checkout field guide."
+  - |
+    Phase 6: RUNNING the fulfilment executor against the live account. The code
+    is written, drilled, and complete — ⛔ IT HAS NEVER DELIVERED AND MUST NOT.
+    The gate stays shut until PayFast is verified end-to-end AND the owner lifts
+    it in person. This line is not authorisation.
   - "Phase 9: code security hardening (claude-security)"
   - "Phase 9.5: live pen test (strix-pentest)"
   - "Phase 10: performance pass"
@@ -156,6 +174,34 @@ known_issues:
     single frame of the swap. New components need no special handling — but do
     not remove that class, and do not set the theme attribute from anywhere
     else without it.
+  - |
+    A DELIVERY WHOSE OUTCOME IS UNKNOWN IS NOT A BUG — IT IS THE DESIGN.
+    Order.fulfilmentInFlight is set before a createorder request and cleared
+    with the delivery record. A run that finds it set refuses to continue and
+    the admin screen WITHHOLDS the retry button, because between the request
+    landing at SmileOne and our write there is a window where the diamonds are
+    gone and nothing on our side knows. Retrying blind buys the pack twice;
+    assuming success shorts the customer. Only the SmileOne dashboard knows.
+    Do not "fix" this by adding an automatic retry or by clearing the marker on
+    a timeout — timeouts are exactly the case it exists for.
+  - |
+    ONLY TWO FAILURES PROVE NOTHING WAS DELIVERED: a safety-gate refusal (never
+    dispatched) and an upstream application-level status in an HTTP 200 body
+    (a structured supplier "no" — insufficient balance lands here). Those clear
+    the in-flight marker. Everything else — timeout, dropped connection, HTTP
+    500, unparseable 200 — keeps it, because each can happen AFTER a successful
+    delivery. See provesNothingWasDelivered() in lib/services/fulfilment.ts.
+  - |
+    The fulfilment sweeper deliberately does NOT retry paid_pending_fulfillment.
+    An order is there because something went wrong, the reason is usually still
+    true, and an automatic loop would send the same doomed call every five
+    minutes. A person presses the button in admin. Do not "improve" this.
+  - |
+    Order.contactPhoneNormalised is REQUIRED for guest lookup by phone and is
+    written only by createPendingOrder. Orders created by hand (fixtures,
+    scripts, an admin tool later) must set it via normalisePkPhone() or the
+    customer will not be able to find their own order by phone number. Email
+    lookup is unaffected. Index synced 2026-08-18.
   - "components/brand/logo.tsx is an SVG placeholder pending the owner's real logo files."
   - |
     Admin catalogue/price editing is NOT built. Prices are owner-set and change
@@ -179,6 +225,8 @@ known_issues:
     GC-PZKCD-W7MFB and GC-J8GD2-JPRU8. All are status `pending`, unpaid,
     contact owner-test@gamescentral.pk. Safe to delete whenever the owner
     wants; left in place because deleting order records is their call.
+    The 2026-08-18 fulfilment/track testing created further fixtures and
+    deleted every one of them by id afterwards — those left nothing behind.
   - |
     ATLAS CREDENTIALS ARE root/root — GO-LIVE BLOCKER, NOT A DEV BLOCKER.
     Works fine for building, but this database will hold real orders and
@@ -235,15 +283,17 @@ blockers:
     and the Double Diamonds use the flat 55/165/275/565 packs. If a future
     price looks wrong, this rate is the check.
   - |
+    RESOLVED 2026-08-18 — kept because the underlying fact has not changed and
+    the wording must not be "tidied up" back into a bare claim.
     DOUBLE DIAMONDS DEPEND ON A PROMOTION WE DO NOT CONTROL. The supplier
     delivers only the first number (55/165/275/565); the matching bonus is
     Moonton's FIRST-RECHARGE promotion, granted in-game on the first purchase
-    of that pack tier. The storefront states "pay for 55 diamonds and receive
-    110 in total" as fact. A customer who has already used their double on
-    that tier will receive 55 and believe they were short-changed, and we
-    cannot detect it beforehand — getrole does not report promo eligibility.
-    Consider wording that names the condition before go-live. Pre-existing
-    (the old 50+50 naming made the same claim), not introduced by the mapping.
+    of that pack tier. A customer who has already used their double on that
+    tier receives only the paid half, and getrole does not report promo
+    eligibility, so we cannot detect it or warn them personally.
+    The condition is now stated in all three places a customer decides: the
+    section blurb, a line under the bonus badge on every card, and a notice in
+    the checkout summary above the pay button. Do not remove them.
   - |
     RESOLVED 2026-08-16 — kept because the wrong conclusion is easy to redraw.
     "SmileOne sandbox host does not exist" was correct but not the whole story:
@@ -294,9 +344,10 @@ external_integrations:
     signing: "CONFIRMED against the live API — a wrong double-MD5 signature would have been rejected"
     productlist: "verified — HTTP 200, 16 Brazil-region products, envelope {status, message, data:{product[]}}"
     getrole: "VERIFIED LIVE — returns the correct in-game username; not-found is HTTP 200 + status 20003, identical for a wrong Player ID and a wrong Zone ID"
-    createorder: "BLOCKED IN CODE by lib/services/smileone/safety.ts. No test deliveries until PayFast is wired AND the owner lifts the gate in person."
+    createorder: "WRITTEN (createSupplierOrder in smileone/client.ts) and BLOCKED IN CODE by lib/services/smileone/safety.ts. NEVER DISPATCHED — not once, not in any test. No deliveries until PayFast is wired AND the owner lifts the gate in person."
     verify_command: "npm run smileone:probe"
-    last_tested: "2026-08-16 (signing + productlist + getrole live, in the script AND through the checkout UI; nothing delivered)"
+    drill_command: "npm run fulfilment:drill (needs the dev server; asserts the gate holds and aborts on any non-STUB delivery)"
+    last_tested: "2026-08-18 (fulfilment drilled in gated and stub modes; nothing delivered). getrole/productlist last live 2026-08-16."
   payfast:
     status: "built-awaiting-credentials"
     company: "PayFast Pakistan / gopayfast.com — NOT payfast.co.za (different company, unrelated API)"
@@ -320,13 +371,24 @@ decisions:
   payfast_mode: "Hosted/redirect checkout recommended to stay out of PCI-DSS scope. NOT yet confirmed with owner against live merchant dashboard."
 
 next_steps:
-  - "PayFast: get merchant credentials + the hosted-checkout field guide, confirm the two guessed items, then set PAYFAST_FIELDS_CONFIRMED=1"
-  - "Reword the Double Diamonds cards to name the first-recharge condition before go-live (see known_issues)"
-  - "Phase 6 executor: walk remainingCalls(), record each success in fulfilmentDeliveries, half-failure -> paid_pending_fulfillment. Write it, do NOT run it until PayFast is verified and the owner opens the gate."
+  # --- the only real blocker ---
+  - "PayFast: get merchant credentials + the hosted-checkout field guide, confirm the two guessed items, then set PAYFAST_FIELDS_CONFIRMED=1. Nothing else is waiting on anything."
+
+  # --- owner actions, none of them blocking ---
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
-  - "Phase 7: guest order lookup on /track — unblocked, findOrderForGuest already exists with the IDOR guard"
-  - "Phase 5: PayFast hosted checkout — blocked on merchant sandbox credentials + field-level docs"
+  - "Make support@gamescentral.pk exist and be monitored, or point siteConfig.contact.email at a working inbox — it is printed on every legal page"
+  - "Confirm the production domain (gamescentral.pk is assumed, not confirmed)"
+  - "Collect from owner: real logo files as PNG/SVG with transparency"
+  - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines the Phase 11 deploy method"
+
+  # --- after PayFast verifies end to end, in this order ---
+  - "Run a full paid order through PayFast sandbox and confirm it settles"
+  - "ONLY THEN, and only with the owner saying so in chat: lift the delivery gate and let fulfilment run for real. Start with the cheapest pack and watch it. LIVE_ACCOUNT_SAFETY.md governs."
+  - "Schedule POST /api/cron/fulfil-orders every 5 min on the production host (curl + CRON_SECRET bearer)"
+
+  # --- remaining phases ---
+  - "Phase 9: npm-run security review (claude-security) across money, auth and fulfilment"
+  - "Phase 9.5: strix-pentest against our own deployment"
+  - "Phase 10: performance pass"
+  - "Phase 11: Hostinger cutover — rotate the Atlas root/root credentials to a least-privilege user FIRST (see known_issues)"
   - "Phase 2: productlist sync into the Product collection (schemas confirmed; blocked on the SKU/region mapping)"
-  - "Collect from owner: real logo files, contact address/phone, markup % and USD->PKR rate"
-  - "Confirm with owner: PayFast hosted-checkout mode + request field-level docs from the merchant dashboard (blocks Phase 5)"
-  - "Ask owner which Hostinger product (VPS vs managed Node.js hosting) — determines Phase 11 deploy method"

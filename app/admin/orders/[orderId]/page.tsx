@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { StatusPill } from "@/components/admin/status-pill";
 import type { OrderStatus } from "@/lib/models/order";
-import { getOrder, transitionOrder } from "@/lib/services/admin";
+import { getOrder, retryFulfilment, transitionOrder } from "@/lib/services/admin";
 import { formatPkr } from "@/lib/utils/money";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +30,22 @@ export default async function AdminOrderDetail({
     const result = await transitionOrder({ orderId, to, note });
 
     if (result.ok) revalidatePath(`/admin/orders/${orderId}`);
+  }
+
+  async function runRetry() {
+    "use server";
+
+    /*
+     * No arguments on purpose. Which order to deliver comes from the URL this
+     * page was rendered for, never from the form — a hidden field naming an
+     * order id is a field an attacker can change, and this action spends the
+     * owner's money.
+     *
+     * retryFulfilment re-checks authorisation and every fulfilment guard
+     * itself; this is only the button.
+     */
+    await retryFulfilment(orderId);
+    revalidatePath(`/admin/orders/${orderId}`);
   }
 
   return (
@@ -101,6 +117,50 @@ export default async function AdminOrderDetail({
               ? "Every pack in this order has been delivered."
               : "Nothing outstanding."}
           </p>
+        )}
+
+        {/*
+          The one state on this screen that no amount of clicking can resolve.
+          A call went out and never reported back, so whether those diamonds
+          landed is knowable only from SmileOne's own dashboard. Retrying is
+          withheld rather than merely discouraged — the wrong guess here buys
+          the pack twice at the owner's expense.
+        */}
+        {order.fulfilment.inFlight && (
+          <div className="mt-4 rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
+            <p>
+              <strong className="font-semibold">
+                Delivery outcome unknown — check SmileOne before doing anything.
+              </strong>
+            </p>
+            <p className="mt-2">
+              A <strong>{order.fulfilment.inFlight.label}</strong> purchase was
+              sent at{" "}
+              {new Date(order.fulfilment.inFlight.startedAt).toLocaleString("en-GB")}{" "}
+              and never confirmed. It may or may not have reached this player.
+            </p>
+            <p className="mt-2 text-muted-foreground">
+              Look the player up in the SmileOne dashboard. If it was delivered,
+              mark this order fulfilled below. If it was not, deliver it by hand
+              and then mark it fulfilled. Automatic retry is disabled for this
+              order because it would buy the pack a second time.
+            </p>
+          </div>
+        )}
+
+        {order.canRetryFulfilment && (
+          <form action={runRetry} className="mt-5">
+            <p className="text-sm text-muted-foreground">
+              Delivers only the packs listed above. Anything that already
+              reached this player is skipped.
+            </p>
+            <button
+              type="submit"
+              className="btn mt-3 h-12 bg-primary px-5 text-primary-foreground"
+            >
+              Retry delivery
+            </button>
+          </form>
         )}
       </section>
 

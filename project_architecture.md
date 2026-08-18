@@ -192,6 +192,43 @@ findOneAndUpdate({ _id, status: 'paid' }, { $set: { status: 'fulfilling' } })
 verified payment, the order lands here and surfaces in the admin dashboard
 rather than being silently lost.
 
+### Fulfilment
+
+`lib/services/fulfilment.ts` is the only code that delivers anything. It claims
+a `paid` order, walks the packs its plan still owes, and buys them one at a
+time. Today it cannot deliver: `createSupplierOrder` runs through the live
+account gate and throws before a socket opens.
+
+The supplier's `createorder` has nowhere to put a reference of ours, so calling
+it twice buys twice — every idempotency guarantee is ours to keep:
+
+- **The claim** is an atomic conditional update on the exact status just read,
+  so two triggers arriving together produce exactly one winner.
+- **What is outstanding** is re-derived by subtracting recorded deliveries from
+  the plan (`remainingCalls`), never by replaying the plan. A composed order
+  that half-lands resumes at the right pack.
+- **`Order.fulfilmentInFlight`** is written *before* each request and cleared
+  with the delivery record. Between the request reaching SmileOne and our write
+  there is a window where the diamonds are gone and we do not know it; a run
+  that finds this set stops and names the pack for a human, because retrying
+  blind double-buys and assuming success shorts the customer.
+
+Only two failures prove nothing was delivered — the gate refusing (never
+dispatched) and an application-level failure status in an HTTP 200 body (a
+structured supplier "no"). Those clear the marker. Timeouts, dropped
+connections, HTTP 500s and unparseable 200s do not, because each can happen
+*after* a delivery.
+
+Delivery starts in the process that verified the payment and is not awaited: a
+ten-pack combo is ten sequential supplier calls, and the customer's return must
+not hang on them. `POST /api/cron/fulfil-orders` (CRON_SECRET bearer, 404 when
+unset or wrong) is the net under that — it takes `paid` orders older than two
+minutes and releases `fulfilling` orders stalled past fifteen. It deliberately
+never auto-retries `paid_pending_fulfillment`; that queue is emptied by a person.
+
+`npm run fulfilment:drill` exercises all of it against the real route, service
+and database, in both the gated and stubbed configurations.
+
 ## 5. External integrations
 
 ### SmileOne
@@ -207,7 +244,7 @@ merchant key never reaches the browser.
 |---|---|
 | `/smilecoin/api/productlist` | Periodic sync into our DB — never per page view |
 | `/smilecoin/api/getrole` | After ID entry, before payment — returns in-game username |
-| `/smilecoin/api/createorder` | Only after payment is independently verified |
+| `/smilecoin/api/createorder` | Only after payment is independently verified — **blocked in code today**, see `LIVE_ACCOUNT_SAFETY.md` |
 
 `getrole`'s `change_price`, when present, is the source of truth for the final
 charge over the cached list price; a mismatch is logged, never silently

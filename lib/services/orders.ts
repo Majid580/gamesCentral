@@ -1,9 +1,15 @@
 import "server-only";
 
+import {
+  deliveredDiamonds,
+  isFullyDelivered,
+  type SupplierProductId,
+} from "@/lib/fulfilment-plan";
 import { connectToDatabase, assertScalar } from "@/lib/models/db";
 import { GameModel } from "@/lib/models/game";
 import { OrderModel, generateOrderId } from "@/lib/models/order";
 import { ProductModel } from "@/lib/models/product";
+import { normalisePkPhone } from "@/lib/utils/phone";
 
 /**
  * Order creation.
@@ -128,6 +134,7 @@ export async function createPendingOrder(
 
     contactEmail: input.contactEmail,
     contactPhone: input.contactPhone,
+    contactPhoneNormalised: normalisePkPhone(input.contactPhone),
   });
 
   return {
@@ -142,29 +149,61 @@ export async function createPendingOrder(
  *
  * Requires a matching contact detail as well as the order ID. The order ID
  * alone must never be enough to read an order — that is the IDOR guard, and it
- * is why this takes both.
+ * is why this takes both. Order IDs are printed on a confirmation page,
+ * forwarded over WhatsApp and left in browser history; a customer's delivery
+ * target and contact details are not things any of those should hand over.
+ *
+ * Returns only what the customer needs to see. Nothing here exposes the
+ * supplier, the packs an order is composed of, or our internal status names —
+ * the controller maps the status to customer language before it goes further.
  */
-export async function findOrderForGuest(args: {
-  orderId: string;
-  contact: string;
-}): Promise<{
+export type GuestOrderView = {
   orderId: string;
   status: string;
   displayName: string;
   pricePkr: number;
   confirmedUsername: string | null;
+  playerId: string;
+  zoneId: string | null;
   createdAt: Date;
-} | null> {
+  /** Diamonds that have actually reached the account so far. */
+  diamondsDelivered: number;
+  /** True when some of the order has landed and some has not. */
+  partiallyDelivered: boolean;
+};
+
+export async function findOrderForGuest(args: {
+  orderId: string;
+  contact: string;
+}): Promise<GuestOrderView | null> {
   await connectToDatabase();
 
   const orderId = String(assertScalar(args.orderId, "orderId")).toUpperCase();
   const contact = String(assertScalar(args.contact, "contact")).trim();
 
-  const order = await OrderModel.findOne({
-    orderId,
-    $or: [{ contactEmail: contact.toLowerCase() }, { contactPhone: contact }],
-  })
-    .select("orderId status pricePkr confirmedUsername createdAt product")
+  /*
+   * Email or phone, and the phone is matched on the normalised form so
+   * `0322 4810876` and `+923224810876` find the same order. Both branches are
+   * built from the caller's own input and are only ever plain strings —
+   * `assertScalar` above is what stops `{ $ne: null }` arriving here and
+   * turning this into "any order with this ID", which would defeat the whole
+   * guard (rule 6).
+   */
+  const matches: Record<string, string>[] = [{ contactEmail: contact.toLowerCase() }];
+
+  const normalisedPhone = normalisePkPhone(contact);
+  if (normalisedPhone) {
+    matches.push({ contactPhoneNormalised: normalisedPhone });
+    // Orders written before the normalised field existed still match on the
+    // raw string, which is exact but better than nothing for that cohort.
+    matches.push({ contactPhone: contact });
+  }
+
+  const order = await OrderModel.findOne({ orderId, $or: matches })
+    .select(
+      "orderId status pricePkr confirmedUsername playerId zoneId createdAt product " +
+        "fulfilmentPlan fulfilmentDeliveries",
+    )
     .lean();
 
   if (!order) return null;
@@ -176,12 +215,32 @@ export async function findOrderForGuest(args: {
     .select("displayName")
     .lean();
 
+  const deliveries = order.fulfilmentDeliveries ?? [];
+  const plan = (order.fulfilmentPlan ?? []).map((part: {
+    supplierProductId: string;
+    quantity: number;
+  }) => ({
+    supplierProductId: part.supplierProductId as SupplierProductId,
+    quantity: part.quantity,
+  }));
+
   return {
     orderId: order.orderId,
     status: order.status,
     displayName: product?.displayName ?? "Package",
     pricePkr: order.pricePkr,
     confirmedUsername: order.confirmedUsername ?? null,
+    playerId: order.playerId,
+    zoneId: order.zoneId ?? null,
     createdAt: order.createdAt,
+    diamondsDelivered: deliveredDiamonds(deliveries),
+    /*
+     * Worth telling a customer about, because they can see it in the game
+     * before we can explain it: a composed order that half-lands leaves them
+     * looking at fewer diamonds than they paid for. Saying so plainly beats
+     * letting them conclude they were cheated.
+     */
+    partiallyDelivered:
+      deliveries.length > 0 && plan.length > 0 && !isFullyDelivered(plan, deliveries),
   };
 }

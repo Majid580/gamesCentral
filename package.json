@@ -13,7 +13,8 @@
     "db:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/db-check.mts",
     "db:sync-indexes": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/db-sync-indexes.mts",
     "db:seed": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/seed-catalogue.mts",
-    "admin:create": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/create-admin.mts"
+    "admin:create": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/create-admin.mts",
+    "fulfilment:drill": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/fulfilment-drill.mts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

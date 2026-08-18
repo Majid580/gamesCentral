@@ -77,6 +77,26 @@ export default async function CheckoutPage({ params }: Props) {
             {formatPkr(product.pricePkr)}
           </p>
         </div>
+        {/*
+          The last place to say it before money moves.
+
+          We deliver the paid amount; the matching amount is the game's own
+          first-recharge bonus, granted by Moonton on the first purchase of
+          that tier. Nothing we can query tells us whether this player has
+          already used theirs, so the only alternative to saying so here is
+          letting them find out afterwards and conclude they were cheated.
+        */}
+        {product.kind === "double_diamonds" && (
+          <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed">
+            <strong className="font-semibold">How the double works:</strong> we send
+            the {product.diamondAmount?.toLocaleString("en-PK")} diamonds you pay
+            for. The matching {product.bonusDiamonds?.toLocaleString("en-PK")} is
+            Mobile Legends&apos; own first-top-up bonus, added by the game. If this
+            account has already used its bonus at this amount, the game will not
+            add it again.
+          </p>
+        )}
+
         <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
           All-in price in PKR. Nothing is added at payment.
         </p>

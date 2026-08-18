@@ -319,3 +319,82 @@ export async function getRole(args: {
     rawUseField: data.use,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* createorder — ⛔ DELIVERS DIAMONDS. SPENDS THE OWNER'S MONEY.        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ⛔ THIS IS THE FUNCTION THAT SPENDS MONEY. READ `LIVE_ACCOUNT_SAFETY.md`.
+ *
+ * Buys one supplier pack and delivers it into a player's account. The delivery
+ * is instant, irreversible, and paid for out of the owner's real SmileOne
+ * balance. There is no sandbox and no test balance — the only host that works
+ * is production.
+ *
+ * IT CANNOT RUN TODAY, BY DESIGN. `smileOneRequest` calls
+ * `assertEndpointPermitted` before dispatching anything, and
+ * `/smilecoin/api/createorder` is not on the read-only allowlist, so this
+ * throws `SmileOneSafetyError` before a socket is opened. That is the intended
+ * behaviour until PayFast is verified end-to-end and the owner lifts the gate
+ * in person. Do not set `SMILEONE_ALLOW_FULFILMENT` to "check the response
+ * shape" — that check costs a pack of diamonds and cannot be undone.
+ *
+ * It is written now so the fulfilment path is complete and reviewable rather
+ * than being invented under time pressure on the day payments go live.
+ *
+ * NOT IDEMPOTENT UPSTREAM. The parameter list the brief documents
+ * (`email, uid, userid, zoneid, product, productid, time, sign`) has nowhere
+ * to put our own order id, so calling twice buys twice. Every idempotency
+ * guarantee this app makes is therefore ours to keep, in
+ * `lib/services/fulfilment.ts` — never assume the supplier will de-duplicate.
+ */
+export async function createSupplierOrder(args: {
+  product: string;
+  productId: string;
+  userId: string;
+  zoneId: string;
+}): Promise<{ supplierOrderId: string }> {
+  const { uid, email } = config();
+
+  const payload = await smileOneRequest("/smilecoin/api/createorder", {
+    uid,
+    email,
+    product: args.product,
+    productid: args.productId,
+    userid: args.userId,
+    zoneid: args.zoneId,
+  });
+
+  const data = unwrapEnvelope(payload, "/smilecoin/api/createorder");
+
+  /*
+   * `order_id` is the documented field, and the envelope shape is confirmed
+   * live for the two read-only endpoints, so it should arrive under `data`.
+   * It is read from either level anyway: this response is the only proof a
+   * delivery happened, and failing to find the id in a response that did
+   * deliver would leave a paid, delivered order recorded as undelivered.
+   */
+  const parsed = createOrderSchema.safeParse(data);
+  const fromEnvelope =
+    !parsed.success && payload && typeof payload === "object"
+      ? createOrderSchema.safeParse(payload)
+      : parsed;
+
+  if (!fromEnvelope.success) {
+    console.error("[smileone] createorder shape mismatch", {
+      topLevelKeys:
+        data && typeof data === "object" ? Object.keys(data as object) : typeof data,
+    });
+    throw new SmileOneError(
+      "createorder succeeded but the response had no readable order id",
+      "/smilecoin/api/createorder",
+    );
+  }
+
+  return { supplierOrderId: String(fromEnvelope.data.order_id) };
+}
+
+const createOrderSchema = z.object({
+  order_id: z.union([z.string(), z.number()]),
+});
