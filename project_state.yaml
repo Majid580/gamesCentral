@@ -117,6 +117,7 @@ completed_features:
   - "Security: cron secret comparison hashes both sides before timingSafeEqual, removing the length oracle the early-return length check created"
   - "Double Diamonds now name the first-recharge condition in all three places a customer decides — section blurb, a line under the bonus badge on every card, and a checkout notice above the pay button (rendered only for double_diamonds; confirmed absent on ml-dia-1050)"
 
+  - "Deploy fix 2026-08-18: npm `overrides` pins next-auth's peerOptional nodemailer to the root ^9. Eight Vercel builds had died in npm install with ERESOLVE before compiling a line. The ^9 pin above is what created the conflict; the dev machine never saw it because node_modules was already resolved with --legacy-peer-deps. Verified by clean install in a pristine directory, and it would have broken the Hostinger build identically."
 in_progress_features: []
 
 pending_features:
@@ -142,6 +143,14 @@ known_issues:
     not even the cheapest pack, not with the owner's own player ID.
     Enforced by lib/services/smileone/safety.ts. Do not remove that gate and do
     not set SMILEONE_ALLOW_FULFILMENT. Full rules in LIVE_ACCOUNT_SAFETY.md.
+  - |
+    VERCEL ENV, UNRESOLVED — the project ecs3/games-central has
+    SMILEONE_ALLOW_FULFILMENT set on Production AND Preview. Vercel marks it
+    Sensitive, so the value cannot be read back through the API or the CLI;
+    safety.ts opens the gate on the exact string "1". It must not exist on any
+    environment. Also set there and equally wrong: BUILD_STANDALONE (the
+    Hostinger-only build switch) and SMILEONE_STUB (throws by design on a
+    production build). Awaiting the owner before anything is removed.
   - |
     RESOLVED 2026-08-16 (rate limiting) — kept because the tuning is a
     judgement call someone will want to revisit. /api/checkout/verify-account
@@ -426,6 +435,8 @@ next_steps:
   - "PayFast: get merchant credentials + the hosted-checkout field guide, confirm the two guessed items, then set PAYFAST_FIELDS_CONFIRMED=1. Nothing else is waiting on anything."
 
   # --- owner actions, none of them blocking ---
+  - "VERCEL, BEFORE THE NEXT DEPLOY: delete SMILEONE_ALLOW_FULFILMENT from Production and Preview (see known_issues), and delete BUILD_STANDALONE and SMILEONE_STUB from Vercel."
+  - "VERCEL: MongoDB Atlas Network Access needs 0.0.0.0/0 — the home page prerenders at build time and queries Atlas, and Vercel build IPs are dynamic. The DB user credentials stay the real gate."
   - "Create the first real admin: npm run admin:create -- <your-email> admin"
   - "PRODUCTION: set the SMTP_* variables on the production host too. They live only in the owner's local .env.local right now, so a deployed build sends nothing until they are configured there."
   - "Confirm the production domain (gamescentral.pk is assumed, not confirmed)"

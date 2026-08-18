@@ -5,6 +5,71 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-18 — The deploy that never built: a peer conflict the lockfile hid
+
+Eight Vercel deployments in a row failed, and none of them reached the
+application. They died in `npm install`:
+
+```
+npm error ERESOLVE could not resolve
+npm error While resolving: next-auth@5.0.0-beta.32
+npm error Found: nodemailer@9.0.5
+npm error Could not resolve dependency:
+npm error peerOptional nodemailer@"^7.0.7 || ^8.0.5" from next-auth@5.0.0-beta.32
+Error: Command "npm install" exited with 1
+```
+
+**Why local development never saw it.** `node_modules` on the dev machine was
+installed at some point with `--legacy-peer-deps` (or `--force`), so a resolved
+tree already existed on disk and every later `npm install` was satisfied by it.
+A clean checkout has no such tree and re-resolves from the registry, where the
+conflict is unavoidable. This was not a Vercel problem in any sense: the same
+`npm install --dry-run` fails on the dev machine, and it would have broken the
+Hostinger production build the first time that box ran an install.
+
+**What was rejected.** Downgrading to `nodemailer@^8.0.11` satisfies the peer
+range and installs cleanly — and reintroduces GHSA-p6gq-j5cr-w38f, a high
+severity advisory affecting nodemailer `<=9.0.0` where the message-level `raw`
+option bypasses `disableFileAccess`/`disableUrlAccess`, giving arbitrary file
+read and SSRF in the delivered message. It is fixed in exactly the 9.0.5 this
+project was already on, and `npm audit` went from 0 to 3 high the moment the
+downgrade was tried. Buying a green build with a known advisory is the wrong
+direction in a codebase that handles money. A committed `.npmrc` carrying
+`legacy-peer-deps=true` was rejected too: it would work on both hosts, but it
+switches peer resolution off for every dependency added from here on, so the
+next genuine conflict arrives silently.
+
+**What shipped** is five lines in `package.json`: an `overrides` entry pinning
+next-auth's nodemailer to the root version. The peer is declared
+`peerOptional` and belongs to next-auth's Email/magic-link provider, which this
+project does not use — admin auth is credentials-only. Nothing in the resolved
+tree changes except that npm stops refusing to place it.
+
+**Verified**
+
+- Reproduced and isolated in a pristine directory, no `node_modules`, which is
+  precisely what Vercel does: `HEAD`'s `package.json` + lockfile fail with
+  ERESOLVE; the same pair carrying the override adds 389 packages and exits 0.
+- `npm audit`: 0 vulnerabilities. nodemailer stays at 9.0.5.
+- `npm run build`, `npx tsc --noEmit` and `npm run lint` all clean. The only
+  call site is `nodemailer.createTransport()` in `lib/services/email/transport.ts`,
+  untouched.
+
+**Open, needing the owner**
+
+- The Vercel project `ecs3/games-central` has `SMILEONE_ALLOW_FULFILMENT` set
+  on Production and Preview. Vercel marks it Sensitive, so its value cannot be
+  read back through the API. `safety.ts` opens the gate on the exact string
+  `"1"`. It must not exist on any environment — see LIVE_ACCOUNT_SAFETY.md.
+- `BUILD_STANDALONE` and `SMILEONE_STUB` are also set on Vercel. The first is
+  the Hostinger-only build switch; the second throws by design on a production
+  build. Both should be absent there.
+- MongoDB Atlas Network Access still needs `0.0.0.0/0` — the home page
+  prerenders at build time and queries Atlas, and Vercel's build IPs are
+  dynamic. The database user credentials remain the real gate.
+
+---
+
 ## 2026-08-18 — Email: the order ID reaches the customer, and the queue reaches the owner
 
 Two silences the shop had no answer for. A customer who closed the tab had
