@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400" role="img" aria-label="Games Central">
+  <!--
+    PLACEHOLDER — replace this file with the owner's real light-mode export.
+
+    Keep the filename, keep a viewBox, and keep the 640x400 aspect ratio so
+    the header does not resize when the theme is toggled. Run
+    `npm run brand:check` after replacing it; it verifies both of those and
+    reports anything that would make the mark sit badly on the page.
+
+    Used on LIGHT backgrounds: navy "GAMES", azure "CENTRAL", pale ribbon.
+  -->
+  <g fill="none" stroke="#cde7f8" stroke-width="34" stroke-linecap="round">
+    <path d="M320 200C230 65 50 65 50 200S230 335 320 200 590 65 590 200 410 335 320 200Z" />
+  </g>
+  <text x="46" y="238"
+        font-family="'Space Grotesk','Arial Black','Helvetica Neue',Arial,sans-serif"
+        font-size="96" font-weight="800" letter-spacing="2" fill="#0b2537">GAMES</text>
+  <text x="276" y="318"
+        font-family="'Segoe Script','Brush Script MT','Snell Roundhand',cursive"
+        font-size="92" font-style="italic" font-weight="600" letter-spacing="3" fill="#1ca9e8">CENTRAL</text>
+</svg>

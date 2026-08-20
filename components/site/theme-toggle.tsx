@@ -8,8 +8,8 @@ const STORAGE_KEY = "gc-theme";
 
 /** Matches the two --background values in globals.css. */
 const THEME_COLOR: Record<Theme, string> = {
-  light: "#faf5ff",
-  dark: "#0f0f23",
+  light: "#f3f8fd",
+  dark: "#0a1a2e",
 };
 
 /**

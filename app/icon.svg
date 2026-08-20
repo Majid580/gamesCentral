@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    Favicon. Next.js picks this up from the `app/icon.svg` file convention and
+    emits the <link rel="icon"> itself — do not add one to the layout.
+
+    A browser tab strip can be light or dark and the page has no say in it, so
+    this ships its own navy field rather than a transparent mark that would
+    vanish on one of them. Colours are --brand-navy and --brand-azure.
+  -->
+  <rect width="64" height="64" rx="14" fill="#0b2537" />
+  <path d="M32 34C24.6 22.6 10 22.6 10 34S24.6 45.4 32 34 54 22.6 54 34 39.4 45.4 32 34Z"
+        fill="none" stroke="#1ca9e8" stroke-width="6.5" stroke-linecap="round" />
+</svg>

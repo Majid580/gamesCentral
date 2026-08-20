@@ -5,6 +5,132 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-20 — The palette is the logo: navy and azure, measured
+
+The owner supplied two brand marks — navy "GAMES" with an azure "CENTRAL"
+script over a pale infinity ribbon (light), and the same lockup in white and
+steel-blue on navy (dark). The site was still wearing the Phase 1 palette: deep
+indigo canvas, neon purple primary, a fuchsia/rose dispersion ramp. The logo
+and the site were two unrelated identities sharing a header.
+
+**Four literals, then everything else derived.** `--brand-navy`, `--brand-azure`,
+`--brand-ice` and `--brand-steel` are declared once as the actual logo colours,
+and every other token is tuned around them. The point is not tidiness: it is
+that a future colour change has one obvious place to start, and the site cannot
+drift away from the mark sitting in its header.
+
+**The logo's own azure is unreadable, and had to stay that way.** `#1ca9e8`
+measures 2.66:1 against white. It cannot carry text, and it cannot hold white
+text on a button — a "Pay now" button in the exact colour of the wordmark fails
+AA outright. `--primary` is therefore that same hue darkened to `#0b6ea6` in
+light and lifted to `#38b6f0` in dark, while the vivid original survives
+untouched in the glows, the page mesh, and the marks themselves, where contrast
+requirements do not apply. This is the most important thing to understand
+before editing the palette: the brand colour and the primary token are
+deliberately not the same value.
+
+**Roles held; one changed.** Blue is brand and navigation, green is money and
+only money, and the third role — emphasis — moved from rose to gold. Rose next
+to azure reads as a clash rather than a signal, and gold is the classic
+complement to navy. The side effect is the useful part: gold is now the *only*
+warm colour anywhere on the site, so a single "Most popular" pill on a page of
+blue is impossible to miss without any extra weight or size.
+
+**The dispersion ramp narrowed.** It ran cyan -> indigo -> fuchsia -> rose,
+half of which now fought the logo. It now walks the cool arc the logo occupies:
+cyan `#0d6d87`, brand blue `#0b63b8`, indigo `#4f46e5`, violet `#7331d8` —
+roughly 193deg to 272deg of hue. That is still enough separation for a 26-card
+grid to read as four families, while every card is visibly a sibling of the
+mark. Green and gold stay excluded from the ramp, so seeing either one anywhere
+still means "money" or "look here", never "decoration".
+
+**Contrast was measured before the colours were chosen, not after.** Picking
+values by eye and auditing later means shipping the failure and finding it in
+review. `npm run design:contrast` (`scripts/contrast-check.mts`) parses
+`app/globals.css` rather than restating the palette — a second copy would drift
+within a week, and a contrast check measuring the wrong colours is worse than
+no check at all — and measures 33 pairs per theme, including every spectrum
+stop against its own 14% tint chip, which is the tightest surface any of them
+lands on. Three candidate stops (`#0e7490`, `#0b6fa8`, `#7c3aed`) measured
+4.16, 4.22 and 4.33 there and were rejected in favour of darker values.
+
+**Then it was verified in a browser, which found two real bugs.** Token-level
+arithmetic does not prove what a page renders, so every text element on the
+live site was measured against its true composited background: 201 elements in
+dark, 196 in light, across the home page, `/track`, `/checkout/[sku]` and the
+admin login. Zero failures; the tightest real pair is 4.71:1 against a 4.5
+floor.
+
+One run reported 13 light-mode failures that turned out to be the harness's
+fault, and the trap is worth recording because it is easy to fall into again:
+flipping `data-theme` directly from the console bypasses the `.theme-switching`
+class, so every element carrying `transition-colors` kept painting the previous
+theme's value — exactly the sticky-transition bug already documented in
+`globals.css`. Re-testing through the real toggle, and through a pinned reload,
+gave zero.
+
+**Brand assets are wired, with placeholders standing in.** `components/brand/logo.tsx`
+now renders `public/brand/logo-light.svg` and `logo-dark.svg`. Which one shows
+is decided entirely in CSS, keyed off the same three theme states the palette
+uses. That is not a style preference: the theme is applied by an inline script
+before hydration, so reading it in React would put the wrong logo in the server
+HTML and swap it afterwards — a logo that visibly flickers on load, on a site
+that asks strangers for money. Both files are `unoptimized`, because
+`/_next/image` refuses SVG unless the whole app opts into `dangerouslyAllowSVG`,
+which would let any future remote SVG execute script.
+
+Two defects surfaced from measuring the rendered DOM rather than trusting the
+markup:
+
+- The footer's wrapper was a plain `grid` and stretched to a **536px-wide
+  invisible box** sitting over the column beside it. Now `inline-grid`.
+- The accessible name was on the light `<img>`. The inactive mark is
+  `visibility: hidden`, which removes it from the accessibility tree — so in
+  dark mode the footer logo had **no accessible name at all**. The name now
+  lives on the wrapper with both images marked decorative, which is stable
+  whichever theme is active.
+
+`npm run brand:check` (`scripts/brand-check.mts`) guards the handover. It fails
+on a missing `viewBox`, and on a light/dark aspect-ratio mismatch — the failure
+that would otherwise ship silently, because unequal marks make the header
+change width every time a visitor toggles the theme. It warns about a baked-in
+background rectangle, and about an embedded `<image>`, which means the file is
+a traced JPG rather than true vector.
+
+The two SVGs currently in `public/brand/` are stand-ins drawn to the right
+proportions, so nothing renders broken in the meantime. `--dark-background`
+(`#0a1a2e`) is deliberately set close to the dark mark's own navy field, so
+that if the owner's export keeps its background rectangle, that rectangle sinks
+into the page instead of reading as a navy box floating in the header.
+
+**Also changed.** `app/icon.svg` added as the favicon via the Next file
+convention — it ships its own navy field rather than a transparent mark,
+because a browser tab strip can be light or dark and the page has no say in
+which. The `themeColor` meta and `ThemeToggle`'s `THEME_COLOR` map moved to the
+new canvases. The transactional email palette was re-tinted to match; it keeps
+hardcoded hex because email clients cannot resolve CSS variables.
+
+**Verified**
+
+- `npx tsc --noEmit` clean, `npx eslint` clean, `npm run build` succeeds with
+  `/icon.svg` registered as a static route.
+- `npm run design:contrast` — 66 pairs across both themes, zero below AA.
+- `npm run brand:check` — both marks usable, aspect ratios agree to 0.0%.
+- Live DOM sweep in both themes across four pages — zero failures.
+- Theme toggle exercised through the real button: palette, canvas and logo all
+  swap together, with no flash and no layout shift.
+
+**Next**
+
+- Owner to paste the real exports over `public/brand/logo-light.svg` and
+  `logo-dark.svg` — same names, transparent background, both on one canvas of
+  the same aspect ratio — then run `npm run brand:check`. No code change
+  needed.
+- Unchanged and still the only thing blocking go-live: PayFast merchant
+  credentials.
+
+---
+
 ## 2026-08-18 — The deploy that never built: a peer conflict the lockfile hid
 
 Eight Vercel deployments in a row failed, and none of them reached the

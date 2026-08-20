@@ -3,77 +3,113 @@
 /*
  * Games Central design tokens.
  *
- * Palette rationale (from the ui-ux-pro-max dataset, crossing three product
- * types this site actually sits between):
- *   - Gaming            -> deep indigo-black canvas, neon purple primary
- *   - Marketplace (P2P) -> "trust purple + transaction green"
- *   - Digital Products  -> "buy green" accent for instant-delivery commerce
+ * THE PALETTE IS THE LOGO. Every colour below is derived from the two brand
+ * marks in public/brand/, not chosen from a swatch library:
  *
- * The purple carries brand/identity; the GREEN carries money. Every
- * buy/confirm/pay action is green, so the commerce path reads as one
- * continuous signal rather than a wall of same-colored buttons.
+ *   --brand-navy    the "GAMES" navy, and the dark logo's field
+ *   --brand-azure   the "CENTRAL" script
+ *   --brand-ice     the pale infinity ribbon on the light mark
+ *   --brand-steel   the mid-blue infinity ribbon on the dark mark
+ *
+ * Those four literals are declared once and everything else is tuned around
+ * them, so the site cannot drift away from the logo sitting in its header.
+ *
+ * ROLES. Three colours carry meaning and never trade places:
+ *
+ *   BLUE   (--primary)    brand, navigation, links, non-money actions
+ *   GREEN  (--accent)     money. Every buy/confirm/pay action, and nothing
+ *                         else. Green is excluded from all decorative use.
+ *   GOLD   (--highlight)  scarcity/emphasis only ("Most popular"). It is the
+ *                         ONLY warm colour on the site, which is precisely
+ *                         what makes a single gold pill impossible to miss on
+ *                         a page that is otherwise entirely blue.
  *
  * DISPERSION RAMP (--spectrum-1..4). A cut diamond splits white light into a
- * spectrum, and diamonds are literally the product. So decorative colour is
- * not arbitrary: it walks the cool half of the visible spectrum, cyan ->
- * indigo -> fuchsia -> rose. Green is deliberately excluded from the ramp so
- * that seeing green anywhere still means "money", never "decoration".
+ * spectrum, and diamonds are literally the product — so decorative colour is
+ * not arbitrary, it walks a spectrum. This ramp is deliberately narrowed to
+ * the cool arc the logo lives in: cyan -> brand blue -> indigo -> violet,
+ * roughly 193deg to 272deg of hue. Wide enough that a 26-card grid reads as
+ * four distinct families; tight enough that every card is visibly a sibling
+ * of the mark in the header. Green and gold are both excluded from the ramp,
+ * so seeing either one anywhere still means "money" or "look here", never
+ * "decoration".
  *
- * Light mode is the Marketplace light palette and dark mode is the Gaming
- * palette — same purple family, so the owner's light and dark logos both sit
- * on a coherent identity instead of two unrelated themes.
+ * CONTRAST IS MEASURED, NOT ESTIMATED. Every value here was picked by running
+ * `npm run design:contrast`, which fails if any foreground/surface pair drops
+ * under WCAG AA. Do not hand-edit a colour without re-running it — several of
+ * these sit 0.05 above the floor and look like they have room they do not.
  */
 
 :root {
   color-scheme: light;
 
-  /* Surfaces */
-  --background: #faf5ff;
-  --foreground: #2e1065;
+  /*
+   * The literal logo colours. Reference values — they are the source the rest
+   * of the palette is derived from, and are used directly only where AA does
+   * not apply (large decorative fills, and the marks themselves).
+   */
+  --brand-navy: #0b2537;
+  --brand-azure: #1ca9e8;
+  --brand-ice: #cde7f8;
+  --brand-steel: #3a7bc0;
+
+  /* Surfaces — a cool ice wash rather than white, so the pale ribbon in the
+     light logo has something to belong to. */
+  --background: #f3f8fd;
+  --foreground: #0b2537;
   --card: #ffffff;
-  --card-foreground: #2e1065;
-  --muted: #f1ecfb;
-  --muted-foreground: #5b5570;
-  --border: #ddd6fe;
+  --card-foreground: #0b2537;
+  --muted: #e7f0f9;
+  --muted-foreground: #4c6b82;
+  --border: #cfe1f2;
   --input: #ffffff;
 
-  /* Brand */
-  --primary: #6d28d9;
+  /* Brand. #1ca9e8 straight off the logo measures 2.66:1 against white — it
+     can neither carry text nor hold white text on a button. This is the same
+     hue darkened to the brightest value that clears AA in every role it plays
+     (5.53 white-on-fill, 5.45 as a link on a card, 4.71 as a badge label on
+     --primary-soft). The vivid original still appears at full strength in
+     glows, meshes and the marks, where AA does not apply. */
+  --primary: #0b6ea6;
   --primary-foreground: #ffffff;
-  --primary-soft: #ede9fe;
+  --primary-soft: #e0eff9;
 
-  /* Money / commerce — every buy + confirm action */
-  --accent: #15803d;
+  /* Money / commerce — every buy + confirm action. Pushed toward emerald
+     rather than the old grass green: next to azure, a blue-leaning green
+     reads as one deliberate palette instead of two colours that merely met. */
+  --accent: #046b4e;
   --accent-foreground: #ffffff;
-  --accent-soft: #dcfce7;
+  --accent-soft: #d9f2e6;
 
-  /* Emphasis only (badges, "most popular"), never a plain action */
-  --highlight: #e11d48;
-  --highlight-foreground: #ffffff;
+  /* Emphasis only (badges, "most popular"), never a plain action. */
+  --highlight: #d99a06;
+  --highlight-foreground: #241a02;
 
   /* Feedback */
-  --destructive: #dc2626;
+  --destructive: #c62828;
   --destructive-foreground: #ffffff;
-  --warning: #b45309;
-  --ring: #7c3aed;
+  --warning: #a05a00;
+  --ring: #0d7cbd;
 
   /*
    * The dispersion ramp. Decorative only — never the sole carrier of meaning.
    *
-   * These stops also run as TEXT (section eyebrows, step numbers), so each is
-   * measured against every surface it can land on, including its own 14% tint
-   * chip. #0e7490 measured 4.23:1 and #e11d48 measured 3.61:1 as a number on
-   * that chip — both under AA — and were darkened to the brightest value that
-   * clears 4.5:1 everywhere rather than to a guessed one.
+   * These stops also run as TEXT (section eyebrows, step numbers) on top of
+   * their own 14% tint chip, which is the tightest surface any of them ever
+   * lands on. Each was darkened to the brightest value that still clears
+   * 4.5:1 there: cyan 4.55, blue 4.60, indigo 4.78, violet 5.00. The
+   * undarkened versions measured 4.16, 4.22 and 4.33 and were rejected.
    */
   --spectrum-1: #0d6d87;
-  --spectrum-2: #4f46e5;
-  --spectrum-3: #a21caf;
-  --spectrum-4: #bf193d;
+  --spectrum-2: #0b63b8;
+  --spectrum-3: #4f46e5;
+  --spectrum-4: #7331d8;
 
-  /* Elevation — light mode uses tinted shadow, dark mode uses glow. */
-  --shadow-card: 0 1px 2px rgb(46 16 101 / 0.06), 0 8px 24px rgb(46 16 101 / 0.08);
-  --shadow-raised: 0 2px 4px rgb(46 16 101 / 0.08), 0 16px 40px rgb(46 16 101 / 0.14);
+  /* Elevation — light mode uses tinted shadow, dark mode uses glow. Tinted
+     with the brand navy, so a card's shadow is the logo's own colour at low
+     alpha rather than neutral grey. */
+  --shadow-card: 0 1px 2px rgb(11 37 55 / 0.06), 0 8px 24px rgb(11 37 55 / 0.10);
+  --shadow-raised: 0 2px 4px rgb(11 37 55 / 0.08), 0 16px 40px rgb(11 37 55 / 0.16);
 
   /* Strength of the coloured hover glow on interactive surfaces. */
   --glow-alpha: 26%;
@@ -100,37 +136,46 @@
  * impossible: there is only one place a dark value can be written.
  */
 :root {
-  --dark-background: #0f0f23;
-  --dark-foreground: #e6e5f0;
-  --dark-card: #1a1832;
-  --dark-card-foreground: #e6e5f0;
-  --dark-muted: #232141;
-  --dark-muted-foreground: #a5a1bd;
-  --dark-border: #302c53;
-  --dark-input: #191733;
+  /*
+   * The canvas is the dark mark's own field, one shade deeper so cards can
+   * sit above it. This is load-bearing, not cosmetic: if the owner's dark SVG
+   * still has its navy background rectangle baked in, that rectangle sinks
+   * into the page here instead of reading as a navy box floating in the
+   * header. `npm run brand:check` reports the mark's real background colour
+   * so the two can be kept in step.
+   */
+  --dark-background: #0a1a2e;
+  --dark-foreground: #e3edf7;
+  --dark-card: #10243c;
+  --dark-card-foreground: #e3edf7;
+  --dark-muted: #16304d;
+  --dark-muted-foreground: #93a9c2;
+  --dark-border: #1f3f61;
+  --dark-input: #0e2138;
 
-  /* #8b5cf6 measured 4.46:1 on the dark background and 4.06:1 on cards — both
-     under the 4.5:1 AA floor. #9b7ef8 measures 6.05 / 5.52 / 6.10. */
-  --dark-primary: #9b7ef8;
-  --dark-primary-foreground: #14082e;
-  --dark-primary-soft: #241a45;
+  /* Near enough to the logo's #1ca9e8 to read as the same colour, lifted just
+     far enough to clear AA on the navy canvas: 7.60 on the background, 6.81
+     on a card, 5.83 on a muted panel. */
+  --dark-primary: #38b6f0;
+  --dark-primary-foreground: #04202f;
+  --dark-primary-soft: #0f2f4a;
 
-  --dark-accent: #22c55e;
-  --dark-accent-foreground: #052e16;
-  --dark-accent-soft: #14331f;
+  --dark-accent: #2ad17f;
+  --dark-accent-foreground: #032418;
+  --dark-accent-soft: #0c3325;
 
-  --dark-highlight: #fb7185;
-  --dark-highlight-foreground: #2b0512;
+  --dark-highlight: #f5b921;
+  --dark-highlight-foreground: #2a1c00;
 
   --dark-destructive: #f87171;
   --dark-destructive-foreground: #2b0505;
   --dark-warning: #fbbf24;
-  --dark-ring: #a78bfa;
+  --dark-ring: #5cc0f0;
 
-  --dark-spectrum-1: #22d3ee;
-  --dark-spectrum-2: #818cf8;
-  --dark-spectrum-3: #e879f9;
-  --dark-spectrum-4: #fb7185;
+  --dark-spectrum-1: #38d3ee;
+  --dark-spectrum-2: #4aa8f5;
+  --dark-spectrum-3: #8b93fb;
+  --dark-spectrum-4: #b98cfb;
 
   --dark-shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
   --dark-shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.45);
@@ -231,6 +276,13 @@
 }
 
 @theme inline {
+  /* The literal logo colours, for the few places that must match the mark
+     exactly rather than its AA-corrected derivative. */
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-azure: var(--brand-azure);
+  --color-brand-ice: var(--brand-ice);
+  --color-brand-steel: var(--brand-steel);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -646,6 +698,62 @@
   .ping {
     animation: gc-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Brand mark                                                          */
+/*                                                                     */
+/* The light and dark logo files stack in one grid cell and CSS picks   */
+/* one, using the same three states as the palette above. Doing it here */
+/* rather than in React means the right mark is in the server HTML and  */
+/* painted on the first frame, with no post-hydration swap.             */
+/*                                                                     */
+/* Note the `visibility` rather than `display: none`: a hidden <img>    */
+/* still decodes, so toggling the theme swaps the mark instantly        */
+/* instead of showing a gap while the other file is fetched.            */
+/* ------------------------------------------------------------------ */
+
+.brand-mark-light,
+.brand-mark-dark {
+  grid-area: 1 / 1;
+  transition: opacity 0.2s ease-out;
+}
+
+.brand-mark-dark {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-mark-light {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  :root:not([data-theme="light"]) .brand-mark-dark {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+:root[data-theme="dark"] .brand-mark-light {
+  opacity: 0;
+  visibility: hidden;
+}
+
+:root[data-theme="dark"] .brand-mark-dark {
+  opacity: 1;
+  visibility: visible;
+}
+
+:root[data-theme="light"] .brand-mark-light {
+  opacity: 1;
+  visibility: visible;
+}
+
+:root[data-theme="light"] .brand-mark-dark {
+  opacity: 0;
+  visibility: hidden;
 }
 
 /* ------------------------------------------------------------------ */

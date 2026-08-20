@@ -15,7 +15,9 @@
     "db:seed": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/seed-catalogue.mts",
     "admin:create": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/create-admin.mts",
     "fulfilment:drill": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/fulfilment-drill.mts",
-    "email:preview": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/email-preview.mts"
+    "email:preview": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/email-preview.mts",
+    "design:contrast": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/contrast-check.mts",
+    "brand:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/brand-check.mts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -1,5 +1,5 @@
 project: Games Central
-last_updated: "2026-08-18"
+last_updated: "2026-08-20"
 current_phase: "phase-5-payfast — BLOCKED ON PAYFAST ONLY. Phases 0-4, 6, 7, 8 complete. Everything that does not need a merchant account is built and exercised; fulfilment is written and drilled but CANNOT deliver (gate closed)."
 
 # ---------------------------------------------------------------------------
@@ -119,6 +119,19 @@ completed_features:
 
   - "Deploy fix 2026-08-18: npm `overrides` pins next-auth's peerOptional nodemailer to the root ^9. Eight Vercel builds had died in npm install with ERESOLVE before compiling a line. The ^9 pin above is what created the conflict; the dev machine never saw it because node_modules was already resolved with --legacy-peer-deps. Verified by clean install in a pristine directory, and it would have broken the Hostinger build identically."
   - "Vercel production deployment LIVE 2026-08-18: https://games-central-ecs3.vercel.app — install fixed, env values re-set from .env.local, Atlas allowlisted 0.0.0.0/0, / prerendered from Atlas at build time. Delivery gate absent from Vercel env; PayFast still unset so checkout tells customers online payment is not live."
+
+  - "Rebrand 2026-08-20: the whole palette re-derived from the owner's two logos — navy + azure replaces the purple/indigo system. --brand-navy/-azure/-ice/-steel are declared once as the literal logo colours and everything else is tuned around them, so the site cannot drift from the mark in its header."
+  - "Rebrand: roles unchanged and now stricter — BLUE brand/nav, GREEN money (every buy/pay/confirm and nothing else), GOLD emphasis. Gold is the only warm colour on the site, which is what makes one 'Most popular' pill unmissable. The old rose highlight clashed with azure and is gone."
+  - "Rebrand: dispersion ramp narrowed from cyan/indigo/fuchsia/rose to the cool arc the logo occupies — cyan #0d6d87, brand blue #0b63b8, indigo #4f46e5, violet #7331d8 (~193deg to 272deg). Still four distinguishable card families, all visibly siblings of the mark."
+  - "Rebrand: the logo's own azure #1ca9e8 measures 2.66:1 on white and cannot carry text or hold white text. --primary is that hue darkened to #0b6ea6 (light) / #38b6f0 (dark); the vivid original survives in glows, meshes and the marks, where AA does not apply."
+  - "Rebrand: npm run design:contrast (scripts/contrast-check.mts) — parses the live globals.css rather than restating it, and measures 66 pairs per theme including each spectrum stop on its own 14% tint chip. Exits non-zero below AA, so it can gate a deploy."
+  - "Rebrand: verified in the browser, not just in tokens — 201 rendered elements in dark and 196 in light, every page's real computed colours, zero failures. Tightest real pair is 4.71:1 against a 4.5 floor."
+  - "Brand assets: components/brand/logo.tsx now ships the owner's two marks from public/brand/logo-light.svg and logo-dark.svg. Which one shows is decided in CSS off the same three theme states as the palette, so the right mark is in the server HTML and painted on frame one — reading the theme in React would have flashed the wrong logo after hydration."
+  - "Brand assets: accessible name lives on the wrapper with both <img> decorative. It cannot live on one image — the inactive mark is visibility:hidden, which drops it from the a11y tree, so an alt on the light file vanished for every dark-mode visitor. Caught by measuring the live DOM."
+  - "Brand assets: both marks are `unoptimized` — /_next/image refuses SVG unless the app opts into dangerouslyAllowSVG, which would let any future remote SVG execute script. They are ~1 KB each."
+  - "Brand assets: npm run brand:check (scripts/brand-check.mts) — fails on a missing viewBox or a light/dark aspect-ratio mismatch (which would make the header resize on every theme toggle), warns on a baked-in background rect or an embedded raster. app/icon.svg added as the favicon via the Next file convention."
+  - "Brand assets: public/brand/logo-light.svg and logo-dark.svg are PLACEHOLDERS pending the owner's real exports. Same names, same 640x400 box — dropping the real files over them needs no code change. brand:check reports while they are still placeholders."
+  - "Rebrand: transactional email palette re-tinted to match (lib/services/email/templates.ts keeps hardcoded hex because email clients cannot resolve CSS variables); themeColor meta and ThemeToggle's THEME_COLOR map moved to the new canvases."
 in_progress_features: []
 
 pending_features:
@@ -129,6 +142,7 @@ pending_features:
     is written, drilled, and complete — ⛔ IT HAS NEVER DELIVERED AND MUST NOT.
     The gate stays shut until PayFast is verified end-to-end AND the owner lifts
     it in person. This line is not authorisation.
+  - "Brand: owner to paste the real logo exports over public/brand/logo-light.svg and logo-dark.svg (same names, transparent background, both on one 640x400-ratio canvas), then run npm run brand:check. No code change needed — the placeholders are wired identically."
   - "Phase 9: code security hardening (claude-security)"
   - "Phase 9.5: live pen test (strix-pentest)"
   - "Phase 10: performance pass"

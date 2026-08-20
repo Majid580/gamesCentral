@@ -59,15 +59,15 @@ function esc(value: string): string {
  */
 function shell(heading: string, bodyHtml: string): string {
   return `<!doctype html>
-<html lang="en"><body style="margin:0;padding:24px;background:#f5f3ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1c1a2e;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e4e0f5;">
+<html lang="en"><body style="margin:0;padding:24px;background:#f3f8fd;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0b2537;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #cfe1f2;">
     <tr><td style="padding:28px 28px 8px 28px;">
-      <p style="margin:0 0 20px 0;font-size:15px;font-weight:700;letter-spacing:0.02em;color:#6d28d9;">GAMES CENTRAL</p>
+      <p style="margin:0 0 20px 0;font-size:15px;font-weight:700;letter-spacing:0.02em;color:#0b6ea6;">GAMES CENTRAL</p>
       <h1 style="margin:0 0 16px 0;font-size:21px;line-height:1.3;font-weight:700;">${esc(heading)}</h1>
       ${bodyHtml}
     </td></tr>
     <tr><td style="padding:8px 28px 28px 28px;">
-      <p style="margin:20px 0 0 0;padding-top:16px;border-top:1px solid #e4e0f5;font-size:12px;line-height:1.6;color:#6b6785;">
+      <p style="margin:20px 0 0 0;padding-top:16px;border-top:1px solid #cfe1f2;font-size:12px;line-height:1.6;color:#4c6b82;">
         Games Central &middot; ${esc(siteConfig.contact.phone)}<br>
         Questions? Reply to this email or message us on WhatsApp.
       </p>
@@ -82,7 +82,7 @@ function detailRows(rows: [string, string][]): string {
       .map(
         ([label, value]) =>
           `<tr>
-            <td style="padding:6px 12px 6px 0;color:#6b6785;white-space:nowrap;vertical-align:top;">${esc(label)}</td>
+            <td style="padding:6px 12px 6px 0;color:#4c6b82;white-space:nowrap;vertical-align:top;">${esc(label)}</td>
             <td style="padding:6px 0;font-weight:600;word-break:break-word;">${esc(value)}</td>
           </tr>`,
       )
@@ -91,7 +91,7 @@ function detailRows(rows: [string, string][]): string {
 }
 
 function orderIdBlock(orderId: string): string {
-  return `<p style="margin:20px 0;padding:14px;background:#f5f3ff;border:1px solid #e4e0f5;border-radius:8px;text-align:center;font-size:20px;font-weight:700;letter-spacing:0.08em;">${esc(orderId)}</p>`;
+  return `<p style="margin:20px 0;padding:14px;background:#f3f8fd;border:1px solid #cfe1f2;border-radius:8px;text-align:center;font-size:20px;font-weight:700;letter-spacing:0.08em;">${esc(orderId)}</p>`;
 }
 
 function paragraph(text: string): string {
@@ -193,10 +193,10 @@ export function orderSavedEmail(facts: OrderEmailFacts): OutboundEmail {
         ),
         orderIdBlock(facts.orderId),
         rows,
-        `<p style="margin:0 0 14px 0;padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:14px;line-height:1.6;">
+        `<p style="margin:0 0 14px 0;padding:12px;background:#fdf6e7;border:1px solid #eccb7a;border-radius:8px;font-size:14px;line-height:1.6;">
           <strong>Nothing has been charged yet</strong> and no diamonds have been sent. We'll email you again the moment your order is delivered.
         </p>`,
-        `<p style="margin:20px 0 0 0;font-size:15px;"><a href="${trackUrl()}" style="color:#6d28d9;font-weight:600;">Track your order</a></p>`,
+        `<p style="margin:20px 0 0 0;font-size:15px;"><a href="${trackUrl()}" style="color:#0b6ea6;font-weight:600;">Track your order</a></p>`,
       ].join(""),
     ),
   };
@@ -288,7 +288,7 @@ export function orderNeedsAttentionEmail(facts: OrderEmailFacts): OutboundEmail 
           "Your payment went through, but our automatic delivery didn't complete.",
         ),
         detailRows([["Order ID", facts.orderId], ...commonRows(facts)]),
-        `<p style="margin:0 0 14px 0;padding:12px;background:#f5f3ff;border:1px solid #e4e0f5;border-radius:8px;font-size:14px;line-height:1.6;">
+        `<p style="margin:0 0 14px 0;padding:12px;background:#f3f8fd;border:1px solid #cfe1f2;border-radius:8px;font-size:14px;line-height:1.6;">
           Your order is in our queue and a person is finishing it now. <strong>You have not been charged twice and nothing has been lost.</strong>
         </p>`,
         paragraph(
@@ -361,9 +361,9 @@ export function operatorAlertEmail(args: {
         ]),
         paragraph(`Reason: ${args.reason}`),
         `<p style="margin:0 0 14px 0;padding:12px;background:${
-          args.needsDashboardCheck ? "#fef2f2;border:1px solid #fecaca" : "#f5f3ff;border:1px solid #e4e0f5"
+          args.needsDashboardCheck ? "#fdf1f1;border:1px solid #f0b9b9" : "#f3f8fd;border:1px solid #cfe1f2"
         };border-radius:8px;font-size:14px;line-height:1.6;"><strong>${esc(urgent)}</strong></p>`,
-        `<p style="margin:20px 0 0 0;font-size:15px;"><a href="${adminUrl}" style="color:#6d28d9;font-weight:600;">Open this order in admin</a></p>`,
+        `<p style="margin:20px 0 0 0;font-size:15px;"><a href="${adminUrl}" style="color:#0b6ea6;font-weight:600;">Open this order in admin</a></p>`,
       ].join(""),
     ),
   };

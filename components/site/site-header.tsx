@@ -23,7 +23,7 @@ export function SiteHeader() {
           className="flex min-h-11 items-center rounded-lg transition-opacity duration-200 hover:opacity-80"
           aria-label="Games Central — home"
         >
-          <Logo />
+          <Logo priority />
         </Link>
 
         <NavLinks />

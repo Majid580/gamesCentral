@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Games Central">
+  <!--
+    Icon-only lockup: the infinity ribbon on its own, for places too tight for
+    the full wordmark. Drawn in currentColor so a single file serves both
+    themes — inherit the colour from whatever renders it.
+  -->
+  <path d="M32 32C23.3 19 6 19 6 32S23.3 45 32 32 58 19 58 32 40.7 45 32 32Z"
+        fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" />
+</svg>
