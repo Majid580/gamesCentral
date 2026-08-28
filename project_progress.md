@@ -47,13 +47,49 @@ region signal only appears as a *difference* between accounts whose country we
 already know. Needs real Player IDs from the owner's WhatsApp order history,
 labelled by country — a few Pakistani, a few from each country to be excluded.
 
+**The gate itself, built the same day.** Owner named the excluded countries —
+Philippines, Russia, Malaysia, Indonesia, Singapore — and chose hard refusal
+over re-pricing. `lib/services/region-policy.ts` runs at account verification,
+before the customer reaches PayFast, so a refusal costs them nothing.
+
+It has two layers, and **only one of them is armed.**
+
+- **Cost gate — live.** Refuses when the supplier's multiplier for this account
+  exceeds `MAX_SUPPLIER_MULTIPLIER` (1.05). This is the layer that actually
+  protects the money: it measures our real cost for this specific account
+  instead of inferring it from a country.
+- **Country gate — deliberately inert.** `COUNTRY_BY_REGION_SIGNAL` is empty,
+  so `resolveCountry` returns null for every account alive and the five named
+  countries match nothing. This is not an oversight and must not be "finished"
+  by pasting in a zone→country table off a forum. An empty table refuses
+  nobody; a guessed one refuses paying Pakistani customers *and* still misses
+  the expensive accounts. It gets populated from labelled lookups or not at all.
+
+Refusals return 403 with a deliberately vague message — the customer has made
+no mistake, so there is nothing to correct, and naming the rule would only tell
+someone which field to change to get around it. The reason lands in the server
+log instead. Every lookup, allowed or refused, logs `[region]` with
+zone/multiplier/country, so live traffic accumulates the sample that eventually
+fills the table.
+
+Eight logic checks cover the live baseline, per-product precedence over the
+top-level multiplier, the floor boundary in both directions, and the fallbacks.
+
+**Known gap, recorded not hidden.** The gate is bypassable by POSTing straight
+to `/api/checkout/create-order`, which takes `confirmedUsername` from the
+request body and never re-verifies. Harmless today — nothing can be delivered
+while the `createorder` gate is shut — but it must be closed before Phase 6.
+The fix is to re-run `verifyGameAccount` inside `createPendingOrder`, which
+would also stop rule 1 leaking in through a client-supplied username. Not done
+unilaterally: it makes order creation depend on SmileOne being reachable, so
+supplier downtime would block sales rather than just delay delivery. The owner
+decides that trade, not me.
+
 **Next**
 
-- Owner to supply labelled Player IDs; re-run the probe; decide from the table
-  whether `zone` is a usable region key or whether the margin floor carries the
-  gate alone.
-- Confirm the allow list, and whether an excluded region is refused or shown a
-  price that covers its real cost.
+- Owner to supply labelled Player IDs; re-run the probe; either populate
+  `COUNTRY_BY_REGION_SIGNAL` or delete it and let the cost gate stand alone.
+- Owner to decide the create-order bypass trade before Phase 6.
 
 ## 2026-08-20 — The palette is the logo: navy and azure, measured
 

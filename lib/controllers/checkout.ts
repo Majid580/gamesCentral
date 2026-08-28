@@ -19,6 +19,7 @@ import {
 import {
   verifyGameAccount,
   AccountNotFoundError,
+  RegionNotServedError,
   type AccountVerification,
 } from "@/lib/services/smileone/verify-account";
 import { SmileOneError } from "@/lib/services/smileone/client";
@@ -162,6 +163,21 @@ export async function verifyAccount(
         error:
           "No player found for that Player ID and Zone ID. Check both and try again.",
         fields: ["playerId", "zoneId"],
+      };
+    }
+    if (error instanceof RegionNotServedError) {
+      /*
+       * Deliberately vague, and deliberately not field-flagged. The customer
+       * has not made a mistake, so there is nothing for them to correct — and
+       * naming the rule would only tell someone which detail to change to get
+       * around it. The reason is in the server log, where the owner can see it.
+       */
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Sorry — we don't serve this account's region yet, so we can't top it " +
+          "up. Nothing has been charged.",
       };
     }
     if (error instanceof SmileOneError) {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getRole, SmileOneError } from "@/lib/services/smileone/client";
+import { evaluateRegionPolicy } from "@/lib/services/region-policy";
 
 /**
  * Account verification — the safety net in front of payment.
@@ -28,6 +29,20 @@ export class AccountNotFoundError extends Error {
   constructor() {
     super("No Mobile Legends account matches that Player ID and Zone ID.");
     this.name = "AccountNotFoundError";
+  }
+}
+
+/**
+ * The account is real, but we will not serve it — either its region is on the
+ * owner's excluded list, or the supplier would charge us more for it than our
+ * listed price is built to absorb. See `lib/services/region-policy.ts`.
+ *
+ * Thrown before payment, so nothing has been charged and nothing needs undoing.
+ */
+export class RegionNotServedError extends Error {
+  constructor() {
+    super("This account's region is not served.");
+    this.name = "RegionNotServedError";
   }
 }
 
@@ -121,6 +136,39 @@ export async function verifyGameAccount(args: {
   }
 
   if (!role.username) throw new AccountNotFoundError();
+
+  const decision = evaluateRegionPolicy({
+    zone: role.zone,
+    changePrice: role.changePrice,
+    priceMultipliers: role.priceMultipliers,
+    supplierProductId: args.smileOneProductId,
+  });
+
+  /*
+   * Logged for every lookup, allowed or refused — not just refusals.
+   *
+   * The region signal can only be decoded by comparing accounts whose country
+   * is known, and real checkout traffic is a far larger sample than anything
+   * we can assemble by hand. This line is how that sample accumulates. No
+   * Player ID is written: `zone` is a small integer shared by many accounts,
+   * so it identifies a server group rather than a person.
+   */
+  console.info("[region] account lookup", {
+    zone: role.zone,
+    multiplier: decision.multiplier,
+    country: decision.country ?? "unknown",
+    allowed: decision.allowed,
+  });
+
+  if (!decision.allowed) {
+    console.warn("[region] refused before payment", {
+      reason: decision.reason,
+      zone: role.zone,
+      multiplier: decision.multiplier,
+      country: decision.country ?? "unknown",
+    });
+    throw new RegionNotServedError();
+  }
 
   return {
     username: role.username,

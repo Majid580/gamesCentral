@@ -230,19 +230,35 @@ const getRoleSchema = z.object({
    */
   zone: z.union([z.string(), z.number()]).optional(),
   /**
-   * When present, this is the source of truth for the final charge over the
-   * cached catalogue price (Section 8). A mismatch is logged by the pricing
-   * service rather than silently resolved.
+   * A MULTIPLIER on the catalogue price for this specific account — not a
+   * price. Confirmed live 2026-08-28: the owner's own account returns `1`, and
+   * no diamond pack costs 1 BRL. Anything that computes a final charge must
+   * MULTIPLY by this, never substitute it.
+   *
+   * A value above 1 is the supplier charging us more to serve this particular
+   * account, which is how a costlier region shows up in our data. That is what
+   * `lib/services/region-policy.ts` gates on.
    */
   change_price: z.union([z.string(), z.number()]).optional(),
   /** Undocumented in the supplied PDF. Observed live as the string "c". */
   use: z.unknown().optional(),
-  /*
-   * The live response also carries an undocumented `id_change_price_info`:
-   * a per-product `[{ product_id, change_price }]` array. Not read here —
-   * Phase 6 needs it when the final charge is computed, and it is recorded in
-   * project_state.yaml so it is not rediscovered from scratch.
+  /**
+   * Undocumented per-product multipliers, same meaning as `change_price` but
+   * specific to one SKU. Observed live as 11 entries, all `1` except product
+   * 25 at `1.0043`.
+   *
+   * Entries are tolerated rather than required: the array has listed
+   * product_ids (20340, 16642) that are absent from `productlist`, so it is
+   * not a mirror of the catalogue and must not be treated as one.
    */
+  id_change_price_info: z
+    .array(
+      z.object({
+        product_id: z.union([z.string(), z.number()]).optional(),
+        change_price: z.union([z.string(), z.number()]).optional(),
+      }),
+    )
+    .optional(),
 });
 
 
@@ -250,9 +266,15 @@ export type RoleLookup = {
   /** The in-game username shown to the customer for confirmation. */
   username: string | null;
   zone: string | null;
+  /** Multiplier on the catalogue price, not a price. See the schema above. */
   changePrice: string | null;
   /** Logged during sandbox testing to determine what this field means. */
   rawUseField: unknown;
+  /**
+   * Per-product multipliers, server-side only. Never widened to the browser —
+   * it is supplier cost data (rule 7).
+   */
+  priceMultipliers: Array<{ productId: string; multiplier: number }>;
 };
 
 /**
@@ -291,7 +313,13 @@ export async function getRole(args: {
       error instanceof SmileOneError &&
       error.upstreamStatus === ACCOUNT_NOT_FOUND_STATUS
     ) {
-      return { username: null, zone: null, changePrice: null, rawUseField: undefined };
+      return {
+        username: null,
+        zone: null,
+        changePrice: null,
+        rawUseField: undefined,
+        priceMultipliers: [],
+      };
     }
     throw error;
   }
@@ -317,6 +345,17 @@ export async function getRole(args: {
     zone: data.zone != null ? String(data.zone) : null,
     changePrice: data.change_price != null ? String(data.change_price) : null,
     rawUseField: data.use,
+    /*
+     * Unparseable entries are dropped rather than defaulted to 1. A silent 1
+     * reads as "this account costs list price", which is exactly the claim we
+     * are not entitled to make about a value we could not read.
+     */
+    priceMultipliers: (data.id_change_price_info ?? []).flatMap((entry) => {
+      if (entry.product_id == null || entry.change_price == null) return [];
+      const multiplier = Number(entry.change_price);
+      if (!Number.isFinite(multiplier)) return [];
+      return [{ productId: String(entry.product_id), multiplier }];
+    }),
   };
 }
 

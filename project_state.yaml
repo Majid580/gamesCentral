@@ -230,6 +230,36 @@ known_issues:
     the owner's WhatsApp order history, labelled by country. One account is a
     baseline, not an answer.
   - |
+    REGION GATE — BUILT 2026-08-28, HALF OF IT IS INERT ON PURPOSE.
+    lib/services/region-policy.ts runs at account verification, before payment.
+    Owner's excluded countries (stated 2026-08-28): PH, RU, MY, ID, SG.
+    ⚠️ DO NOT TELL THE OWNER THOSE FIVE ARE BLOCKED. They are not. The country
+    layer resolves through COUNTRY_BY_REGION_SIGNAL, which is EMPTY, so
+    resolveCountry returns null for every account alive. Empty was chosen over
+    guessed deliberately: a guessed zone->country table refuses paying
+    Pakistani customers and still misses the expensive ones.
+    What IS live is the cost gate: refuse when getrole's multiplier exceeds
+    MAX_SUPPLIER_MULTIPLIER (1.05). That measures the actual harm — the
+    supplier charging us above catalogue price for this specific account —
+    rather than inferring it from a country. It is unproven against a real
+    foreign account, because we have not had one to look at.
+    Every lookup logs [region] with zone/multiplier/country/allowed, so live
+    traffic accumulates the sample that populates the table.
+  - |
+    REGION GATE IS BYPASSABLE AT /api/checkout/create-order — MUST BE CLOSED
+    BEFORE PHASE 6 GOES LIVE. The gate lives in verifyGameAccount, which only
+    the verify-account endpoint calls. createPendingOrder takes
+    confirmedUsername and supplierChangePrice straight from the request body,
+    so a direct POST skips both the region check and the getrole safety net.
+    HARMLESS TODAY — nothing can be delivered while the createorder gate is
+    shut, so a bypassed order cannot spend anything.
+    FIX: re-run verifyGameAccount inside createPendingOrder and use ITS
+    username rather than the client's (this also fixes rule 1 creeping in
+    through confirmedUsername). NOT DONE YET because it makes order creation
+    depend on SmileOne being reachable — SmileOne downtime would then block
+    sales instead of merely delaying delivery. That is the owner's call to
+    make, not a decision to slip in silently.
+  - |
     RESOLVED AS A DECISION 2026-08-18, not deferred again — do not re-open
     without a new reason. script-src keeps 'unsafe-inline'. The only
     dangerouslySetInnerHTML in the codebase is the pre-paint theme script and
