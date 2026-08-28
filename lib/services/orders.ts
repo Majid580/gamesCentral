@@ -10,6 +10,7 @@ import { GameModel } from "@/lib/models/game";
 import { OrderModel, generateOrderId } from "@/lib/models/order";
 import { ProductModel } from "@/lib/models/product";
 import { notifyOrderSaved } from "@/lib/services/email/notify";
+import { verifyGameAccount } from "@/lib/services/smileone/verify-account";
 import { normalisePkPhone } from "@/lib/utils/phone";
 
 /**
@@ -19,15 +20,25 @@ import { normalisePkPhone } from "@/lib/utils/phone";
  * own database, never accepted from the caller.** The client sends a SKU and
  * delivery details; what it costs is decided here (rule 1). There is
  * deliberately no price parameter to pass.
+ *
+ * The account is re-verified here too, for the same reason. /verify-account is
+ * a separate public endpoint, so a caller can simply not call it — every check
+ * that lives only there (the region block, and getrole's defence against a
+ * mistyped Player ID) is skippable by posting straight to this one. Repeating
+ * the lookup costs one read-only supplier call per order and makes those
+ * checks unavoidable.
  */
 
 export type CreateOrderInput = {
   sku: string;
   playerId: string;
   zoneId: string;
-  /** The username getrole returned and the customer confirmed. */
+  /**
+   * The username the customer saw and confirmed. Recorded on the order only
+   * after the server has re-derived it — this value is used to notice a
+   * disagreement, never to populate the order.
+   */
   confirmedUsername: string;
-  supplierChangePrice: string | null;
   contactEmail: string;
   contactPhone: string;
 };
@@ -78,7 +89,9 @@ export async function createPendingOrder(
 
   if (!product) throw new ProductUnavailableError();
 
-  const game = await GameModel.findById(product.game).select("_id requiresZoneId").lean();
+  const game = await GameModel.findById(product.game)
+    .select("_id requiresZoneId smileOneProduct")
+    .lean();
   if (!game) throw new ProductUnavailableError();
 
   /*
@@ -96,13 +109,47 @@ export async function createPendingOrder(
     throw new ProductNotFulfillableError(String(sku));
   }
 
+  /*
+   * Re-verify the account. Ordered after the cheap database checks above so a
+   * dead SKU is rejected without troubling the supplier, and before the order
+   * row exists so a refusal leaves nothing behind to clean up.
+   *
+   * AccountNotFoundError, RegionNotServedError and SmileOneError all propagate
+   * to the controller, which turns them into the same messages the lookup step
+   * gives. The account being checked against the pack we will actually buy —
+   * not the catalogue's nominal SKU — is what makes the per-product multiplier
+   * in the region cost gate apply to the right thing.
+   */
+  const verification = await verifyGameAccount({
+    smileOneProduct: game.smileOneProduct,
+    smileOneProductId: fulfilmentPlan[0].supplierProductId,
+    playerId: input.playerId,
+    zoneId: input.zoneId,
+  });
+
+  /*
+   * A disagreement here does not change where the diamonds go — that is fixed
+   * by the Player ID, which is the same in both lookups — so it is not worth
+   * refusing a sale over. It does mean the customer confirmed a name that is
+   * no longer what the account is called, which is worth knowing about if one
+   * of them later disputes what they bought.
+   */
+  if (verification.username !== input.confirmedUsername) {
+    console.warn("[orders] confirmed username disagreed with re-verification", {
+      sku,
+      confirmed: input.confirmedUsername,
+      verified: verification.username,
+    });
+  }
+
   const order = await OrderModel.create({
     orderId: generateOrderId(),
     product: product._id,
     game: product.game,
     playerId: input.playerId,
     zoneId: game.requiresZoneId ? input.zoneId : null,
-    confirmedUsername: input.confirmedUsername,
+    // The server's answer, not the caller's claim.
+    confirmedUsername: verification.username,
 
     // Straight from the catalogue document read above. Nothing the caller
     // sent influences this number.
@@ -114,7 +161,10 @@ export async function createPendingOrder(
       // than implying a rate was used and then lost.
       exchangeRate: 1,
       markupPercentage: 0,
-      supplierChangePrice: input.supplierChangePrice,
+      // Straight from the supplier's own answer a moment ago. It used to be
+      // echoed by the client, which meant the number recorded against a real
+      // order was whatever the caller felt like sending.
+      supplierChangePrice: verification.supplierChangePrice,
     },
 
     /*

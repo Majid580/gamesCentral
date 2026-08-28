@@ -55,8 +55,12 @@ export const createOrderSchema = z.object({
   sku: z.string().trim().min(1).max(64),
   playerId: playerIdSchema,
   zoneId: zoneIdSchema,
+  /**
+   * What the customer saw and agreed to. The server re-derives the username
+   * from the supplier before the order is written, so this is only used to
+   * notice a disagreement — it never reaches the order record.
+   */
   confirmedUsername: z.string().trim().min(1).max(80),
-  supplierChangePrice: z.string().trim().max(32).nullable().default(null),
   contactEmail: z.email("Enter an email we can send the receipt to.").max(160),
   /* Pakistani mobile numbers, tolerant of +92 / 0 / spaces. */
   contactPhone: z
@@ -86,6 +90,26 @@ export type CheckoutResult<T> =
       /** Set on a 429, so the route can send a truthful `Retry-After`. */
       retryAfterSeconds?: number;
     };
+
+/**
+ * The "no such account" answer, shared by the lookup step and the re-check at
+ * order creation so the two cannot drift into telling a customer different
+ * things about the same typo.
+ *
+ * Both inputs are always flagged. The supplier returns two different not-found
+ * codes and neither can be trusted to place the blame — 20004's message names
+ * the Player ID, but a valid Player ID with a wrong Zone ID returns it too. So
+ * the customer is asked to check both, which is the only thing we actually
+ * know.
+ */
+function accountNotFound(): CheckoutResult<never> {
+  return {
+    ok: false,
+    status: 404,
+    error: "No player found for that Player ID and Zone ID. Check both and try again.",
+    fields: ["playerId", "zoneId"],
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Verify account                                                      */
@@ -151,20 +175,7 @@ export async function verifyAccount(
     });
     return { ok: true, data: verification };
   } catch (error) {
-    if (error instanceof AccountNotFoundError) {
-      /*
-       * Both fields are flagged because the supplier genuinely cannot say
-       * which one is wrong — claiming it was the Player ID would send a
-       * customer with a mistyped Zone ID hunting in the wrong place.
-       */
-      return {
-        ok: false,
-        status: 404,
-        error:
-          "No player found for that Player ID and Zone ID. Check both and try again.",
-        fields: ["playerId", "zoneId"],
-      };
-    }
+    if (error instanceof AccountNotFoundError) return accountNotFound();
     if (error instanceof RegionNotServedError) {
       /*
        * Deliberately vague, and deliberately not field-flagged. The customer
@@ -262,6 +273,37 @@ export async function createOrder(
      */
     if (error instanceof ProductNotFulfillableError) {
       return { ok: false, status: 409, error: error.message };
+    }
+
+    /*
+     * The re-verification inside createPendingOrder can fail the same three
+     * ways the lookup step can. The messages are deliberately identical: a
+     * customer who reaches this point has already passed the lookup, so any of
+     * these means something changed under them — or that they never went
+     * through the lookup at all, which is exactly the case this re-check
+     * exists to catch.
+     */
+    if (error instanceof RegionNotServedError) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Sorry — we don't serve this account's region yet, so we can't top it " +
+          "up. Nothing has been charged.",
+      };
+    }
+    if (error instanceof AccountNotFoundError) return accountNotFound();
+    if (error instanceof SmileOneError) {
+      console.error("[checkout] order-time account verification failed", {
+        endpoint: error.endpoint,
+        status: error.status,
+      });
+      return {
+        ok: false,
+        status: 503,
+        error:
+          "We can't reach the game servers right now. Nothing has been charged — please try again shortly.",
+      };
     }
     throw error;
   }

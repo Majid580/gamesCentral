@@ -95,8 +95,9 @@ export function CheckoutForm({ product }: { product: CheckoutProduct }) {
         sku: product.sku,
         playerId,
         zoneId: product.requiresZoneId ? zoneId : "1",
+        // Sent so the server can flag a disagreement with its own lookup, not
+        // to be stored. The order records the server's answer.
         confirmedUsername: verification.username,
-        supplierChangePrice: null,
         contactEmail: email,
         contactPhone: phone,
         // Echoed so the server can report a mid-checkout price change. It

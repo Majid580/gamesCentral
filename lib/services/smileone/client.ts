@@ -219,7 +219,30 @@ export async function fetchProductList(
  * response, so it is not possible to tell the customer which of the two is at
  * fault — only that the pair does not match an account.
  */
-const ACCOUNT_NOT_FOUND_STATUS = "20003";
+/**
+ * "That Player ID + Zone ID pair does not exist", confirmed live: HTTP 200
+ * with `{"status":20003,"message":"USER ID ou Zone ID não existe"}`. The
+ * upstream cannot say which of the two is wrong, so neither can we.
+ */
+const ACCOUNT_NOT_FOUND_PAIR = "20003";
+
+/**
+ * A SECOND not-found code, confirmed live 2026-08-28: HTTP 200 with
+ * `{"status":20004,"message":"USER ID não existe"}`.
+ *
+ * It was unhandled and fell through to the generic failure path, so a mistyped
+ * Player ID told the customer we could not reach the game servers and to try
+ * again shortly — they would have retried a typo indefinitely.
+ *
+ * ⚠️ DO NOT TRUST ITS MESSAGE. "USER ID não existe" reads as though the Player
+ * ID specifically is at fault, and it is not: the owner's own VALID Player ID
+ * with a wrong Zone ID (1638539586/9999) returns this same 20004. Narrowing
+ * the error to the Player ID on the strength of that wording was tried and
+ * reverted — it told a customer whose Player ID was perfect to go and check
+ * their Player ID. Treat it exactly like 20003: the pair does not match, and
+ * we cannot say which half is wrong.
+ */
+const ACCOUNT_NOT_FOUND_PLAYER = "20004";
 
 /**
  * "This account's country is not served", confirmed live 2026-08-28 against a
@@ -356,7 +379,8 @@ export async function getRole(args: {
 
     if (
       error instanceof SmileOneError &&
-      error.upstreamStatus === ACCOUNT_NOT_FOUND_STATUS
+      (error.upstreamStatus === ACCOUNT_NOT_FOUND_PAIR ||
+        error.upstreamStatus === ACCOUNT_NOT_FOUND_PLAYER)
     ) {
       return {
         username: null,

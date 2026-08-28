@@ -100,11 +100,50 @@ unilaterally: it makes order creation depend on SmileOne being reachable, so
 supplier downtime would block sales rather than just delay delivery. The owner
 decides that trade.
 
+**The bypass is closed, on the owner's go-ahead.** `createPendingOrder` now
+re-runs `verifyGameAccount` before writing the order, so the region block and
+getrole's mistyped-ID safety net cannot be skipped by posting straight to
+`/api/checkout/create-order`. `confirmedUsername` and `supplierChangePrice` are
+no longer taken from the request body — the order records the server's own
+lookup. The client still sends the username it showed the customer, used only
+to log a disagreement. A mismatch does not refuse the sale: the Player ID is
+identical in both lookups, so the destination cannot have moved, and a rename
+is not worth losing an order over.
+
+The accepted cost, agreed rather than slipped in: **order creation now depends
+on SmileOne being reachable.** Supplier downtime blocks new sales instead of
+merely delaying delivery. `orderCreateRules` also consumes the shared
+`lookup:global` bucket now, because order creation reaches the merchant account
+too and both of its own rules are keyed on values the caller controls.
+
+**A second not-found code, unhandled all along.** Probing a bogus Player ID
+returned `{"status":20004,"message":"USER ID não existe"}` — distinct from the
+20003 the code knew about. It fell through to the generic failure path, so a
+mistyped Player ID has been telling customers *"we can't reach the game
+servers, try again shortly"*: a permanent no dressed up as a transient outage,
+which they would have retried indefinitely. Both codes now map to
+`AccountNotFoundError`.
+
+**And a wrong turn worth recording.** 20004's message names the USER ID, so the
+error was narrowed to flag only the Player ID field — better UX, apparently.
+Testing it against the owner's own *valid* Player ID with a wrong Zone ID
+returned 20004 as well. The "improvement" would have told a customer whose
+Player ID was perfect to go and re-check their Player ID. Reverted the same
+day; both fields stay flagged, and the reasoning is now a comment beside the
+constant so nobody re-derives it.
+
+**Verified end to end** against the live supplier through the running app: the
+Philippine account is refused at *both* endpoints, a bogus Player ID returns
+404 naming both fields, the valid account still returns its username, the
+per-IP order limiter fires on the fifth attempt, and the database holds zero
+orders for either test Player ID — every refusal happened before anything was
+written.
+
 **Next**
 
-- Owner to decide the create-order bypass trade before Phase 6.
 - No further region work. The country question is answered and closed; do not
   reopen it by building a zone lookup.
+- Phase 5 (PayFast) remains the only thing blocking go-live.
 
 ## 2026-08-20 — The palette is the logo: navy and azure, measured
 

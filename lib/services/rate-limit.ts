@@ -246,5 +246,21 @@ export function orderCreateRules(ip: string, contactEmail: string): RateLimitRul
   return [
     { key: `order:ip:${ip}`, ...ORDER_CREATE_PER_IP },
     { key: `order:to:${recipient}`, ...ORDER_CREATE_PER_EMAIL },
+    /*
+     * The SAME global bucket the lookup endpoint uses, deliberately shared.
+     *
+     * Order creation re-verifies the account, so it now reaches the merchant
+     * account too. Giving it its own budget would mean the rule that exists to
+     * stop SmileOne throttling us could be walked past by sending order
+     * creations instead of lookups — and both per-order rules above are keyed
+     * on values a caller controls (`x-forwarded-for` is spoofable, and so is
+     * the address they claim to be mailing).
+     *
+     * The cost is that a lookup flood can make a customer who already verified
+     * wait to submit. That is the same trade the lookup limit already makes,
+     * for the same reason: a minute of "try again" ends by itself, a suspended
+     * merchant account needs a phone call.
+     */
+    { key: "lookup:global", ...LOOKUP_GLOBAL },
   ];
 }
