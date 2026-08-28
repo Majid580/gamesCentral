@@ -207,44 +207,37 @@ known_issues:
     including product_id 20340 and 16642, which are in neither. The catalogue
     mapping is still not settled.
   - |
-    REGION GATE — under investigation, blocks nothing yet. The owner wants
-    accounts from countries whose recharge costs more than our listed price
-    turned away before payment ("we don't serve that country yet").
-    MLBB Zone IDs DO NOT ENCODE COUNTRY. Players from different countries
-    share zones; the "server ID to country" lists on forums are guesswork and
-    must not be built against — a wrong guess delivers at a loss.
-    The real signals are all inside getrole, and all free to read:
-      - `change_price` / `id_change_price_info` multipliers — these measure
-        the thing that actually matters (our cost) directly, in supplier
-        currency. A margin floor built on these needs no country table and
-        cannot go stale.
-      - `zone` — candidate region index, unproven.
-      - status 20003 — the BR product may simply refuse foreign accounts
-        outright, in which case checkout already blocks them. Untested.
-    Probe: `npm run smileone:region -- <playerId>:<zoneId>:<label> …`
-    (scripts/smileone-region-probe.mts, getrole only, prints the raw payload).
-    BASELINE 2026-08-28, owner's own account 1638539586/16932:
-      zone=1  change_price=1  use=c  11 products  product 25 = 1.0043
-    BLOCKED ON GROUND TRUTH: the signal is only visible as a difference
-    between accounts of known-different countries. Needs real Player IDs from
-    the owner's WhatsApp order history, labelled by country. One account is a
-    baseline, not an answer.
+    REGION GATE — RESOLVED 2026-08-28. THE SUPPLIER DOES THE COUNTRY CHECK.
+    getrole answers HTTP 200 + status 201 for a restricted account, verbatim:
+    "According to the request of the mlbb team, we do not support recharge for
+    users in Indonesia, Malaysia, the Philippines, Singapore, and Russia for
+    the time being."
+    Confirmed live against a real Philippine account (302375851/3596) beside
+    the owner's own (1638539586/16932), which answered normally. The five are
+    exactly the five the owner named.
+    So there is NO zone-to-country table in this codebase and there must never
+    be one. MLBB Zone IDs do not encode country — players from different
+    countries share zones, and the "server ID to country" lists on forums are
+    guesswork. We do not need them: Moonton's own restriction reaches us
+    through status 201, before any money moves, for free.
+    Handled in lib/services/smileone/client.ts (SmileOneRegionBlockedError) ->
+    verify-account (RegionNotServedError) -> controller (403, polite text, no
+    field flagged, upstream wording logged not forwarded).
+    Do not "improve" this by parsing the country names out of the message. It
+    says "for the time being" — the list is Moonton's to change, and the status
+    code is the stable part.
   - |
-    REGION GATE — BUILT 2026-08-28, HALF OF IT IS INERT ON PURPOSE.
-    lib/services/region-policy.ts runs at account verification, before payment.
-    Owner's excluded countries (stated 2026-08-28): PH, RU, MY, ID, SG.
-    ⚠️ DO NOT TELL THE OWNER THOSE FIVE ARE BLOCKED. They are not. The country
-    layer resolves through COUNTRY_BY_REGION_SIGNAL, which is EMPTY, so
-    resolveCountry returns null for every account alive. Empty was chosen over
-    guessed deliberately: a guessed zone->country table refuses paying
-    Pakistani customers and still misses the expensive ones.
-    What IS live is the cost gate: refuse when getrole's multiplier exceeds
-    MAX_SUPPLIER_MULTIPLIER (1.05). That measures the actual harm — the
-    supplier charging us above catalogue price for this specific account —
-    rather than inferring it from a country. It is unproven against a real
-    foreign account, because we have not had one to look at.
-    Every lookup logs [region] with zone/multiplier/country/allowed, so live
-    traffic accumulates the sample that populates the table.
+    REGION COST GATE — lib/services/region-policy.ts, live since 2026-08-28.
+    Separate concern from the country block above, and NOT a duplicate of it.
+    It catches the account the supplier IS willing to serve but at a price
+    above what our catalogue assumes: refuse when getrole's multiplier exceeds
+    MAX_SUPPLIER_MULTIPLIER (1.05).
+    Baseline for calibration, owner's own account: change_price=1, per-product
+    multipliers all 1 except product 25 at 1.0043.
+    UNPROVEN IN THE FIELD — no account has ever come back above 1.0043, so the
+    refusal branch has only ever been exercised by the logic checks. If a real
+    Pakistani customer is ever refused by it, the observed multiplier is in the
+    [region] log line; raise the constant rather than removing the gate.
   - |
     REGION GATE IS BYPASSABLE AT /api/checkout/create-order — MUST BE CLOSED
     BEFORE PHASE 6 GOES LIVE. The gate lives in verifyGameAccount, which only

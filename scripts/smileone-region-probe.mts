@@ -9,12 +9,29 @@
  * every request goes through `assertEndpointPermitted()`, the same allowlist
  * gate the app uses. Do not weaken that gate.
  *
- * WHY THIS EXISTS
- * ---------------
- * We need to know whether a Player ID + Zone ID can be resolved to a COUNTRY,
- * so accounts from regions that cost more than our listed price can be turned
- * away before payment. MLBB Zone IDs do not encode country — but `getrole`
- * returns three undocumented fields that might:
+ * WHAT THIS ANSWERED — 2026-08-28, the question is CLOSED
+ * -------------------------------------------------------
+ * The country question is settled and does not need re-investigating. A real
+ * Philippine account (302375851/3596) came back HTTP 200 + status 201:
+ *
+ *   "According to the request of the mlbb team, we do not support recharge for
+ *    users in Indonesia, Malaysia, the Philippines, Singapore, and Russia for
+ *    the time being."
+ *
+ * SmileOne performs the country check itself. We do not need a zone-to-country
+ * table and must not build one. See lib/services/smileone/client.ts.
+ *
+ * The script is kept because it is still the fastest way to see a raw getrole
+ * payload for a new account — a new status code, an unfamiliar multiplier, a
+ * customer complaint that needs reproducing.
+ *
+ * WHY IT WAS WRITTEN
+ * ------------------
+ * Before the above was known: to find out whether a Player ID + Zone ID could
+ * be resolved to a COUNTRY, so accounts from regions costing more than our
+ * listed price could be turned away before payment. MLBB Zone IDs do not
+ * encode country — but `getrole` returns three undocumented fields that might
+ * have:
  *
  *   zone                 NOT an echo of the zoneid we send (16932 -> 1). A
  *                        small integer that ignores our input is the shape a

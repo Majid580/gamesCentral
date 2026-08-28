@@ -221,6 +221,40 @@ export async function fetchProductList(
  */
 const ACCOUNT_NOT_FOUND_STATUS = "20003";
 
+/**
+ * "This account's country is not served", confirmed live 2026-08-28 against a
+ * real Philippine account (302375851/3596). The upstream answers HTTP 200 with
+ * `{"status":201,"message":"According to the request of the mlbb team, we do
+ * not support recharge for users in Indonesia, Malaysia, the Philippines,
+ * Singapore, and Russia for the time being."}`
+ *
+ * This is the country check, and it is the supplier's own — sourced from
+ * Moonton, applied before we spend anything, and impossible for us to get
+ * wrong. It is why this codebase has no zone-to-country table: it does not
+ * need one, and any table we built would be a worse copy of this.
+ *
+ * The response does NOT say which of the five the account belongs to, and we
+ * do not need to know. The message is kept for the server log only.
+ */
+const REGION_BLOCKED_STATUS = "201";
+
+/**
+ * The supplier refuses to serve this account's country.
+ *
+ * Deliberately NOT a subclass of SmileOneError: callers map SmileOneError to
+ * "we can't reach the game servers, try again shortly", which is both untrue
+ * here and cruel — the customer would retry forever against a permanent no.
+ */
+export class SmileOneRegionBlockedError extends Error {
+  constructor(
+    /** The upstream wording, for the server log. Never shown to a customer. */
+    readonly upstreamMessage: string,
+  ) {
+    super("The supplier does not serve this account's country.");
+    this.name = "SmileOneRegionBlockedError";
+  }
+}
+
 const getRoleSchema = z.object({
   username: z.string().optional(),
   /**
@@ -309,6 +343,17 @@ export async function getRole(args: {
      * your Player ID" versus "we're having trouble, try again shortly".
      * Separating them here is what lets checkout say the right one.
      */
+    /*
+     * Checked before the not-found case because the two are opposite answers
+     * that a customer must not receive interchangeably: one means "check your
+     * Player ID", the other means "there is nothing you can type that will
+     * work". Telling a Philippine player to re-check their ID would have them
+     * retrying a permanent refusal.
+     */
+    if (error instanceof SmileOneError && error.upstreamStatus === REGION_BLOCKED_STATUS) {
+      throw new SmileOneRegionBlockedError(error.message);
+    }
+
     if (
       error instanceof SmileOneError &&
       error.upstreamStatus === ACCOUNT_NOT_FOUND_STATUS

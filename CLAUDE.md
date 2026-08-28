@@ -134,6 +134,14 @@ money, auth, or fulfilment code. The short version:
 - **`getrole` is the safety net** against a mistyped Player ID sending diamonds
   to a stranger. Never skip it, and always show the returned in-game username
   for confirmation before payment.
-- **`getrole`'s `change_price`**, when present, is the source of truth for the
-  final charge over the cached product-list price. Log any mismatch rather than
-  silently picking one.
+- **`getrole`'s `change_price` is a MULTIPLIER, not a price.** Confirmed live:
+  the owner's own account returns `1`, and no diamond pack costs 1 BRL. Any
+  final charge must **multiply** by it — substituting it would charge one
+  currency unit per pack. The per-product `id_change_price_info` entry for the
+  SKU being bought wins over the top-level value when both exist.
+- **Country restrictions are the supplier's, not ours.** `getrole` answers
+  status `201` for accounts in Indonesia, Malaysia, the Philippines, Singapore
+  and Russia. That check is Moonton's, arrives before any money moves, and is
+  handled in `lib/services/smileone/client.ts`. **Never build a Zone ID → country
+  lookup** — Zone IDs do not encode country, and the tables that claim otherwise
+  are guesswork.

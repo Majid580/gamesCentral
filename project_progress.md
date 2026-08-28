@@ -47,49 +47,64 @@ region signal only appears as a *difference* between accounts whose country we
 already know. Needs real Player IDs from the owner's WhatsApp order history,
 labelled by country — a few Pakistani, a few from each country to be excluded.
 
-**The gate itself, built the same day.** Owner named the excluded countries —
-Philippines, Russia, Malaysia, Indonesia, Singapore — and chose hard refusal
-over re-pricing. `lib/services/region-policy.ts` runs at account verification,
-before the customer reaches PayFast, so a refusal costs them nothing.
+**The gate itself, built the same day — then rebuilt when the data arrived.**
+Owner named the excluded countries: Philippines, Russia, Malaysia, Indonesia,
+Singapore. Hard refusal, not re-pricing. The first version had a cost gate plus
+a deliberately empty zone→country table, on the reasoning that an empty table
+refuses nobody where a guessed one refuses the wrong people.
 
-It has two layers, and **only one of them is armed.**
+**Then the owner supplied a real Philippine account, and the empty table turned
+out to be the right answer for a better reason than the one I had.** Probing
+302375851/3596 beside the owner's own account returned HTTP 200 with status
+`201` and, verbatim:
 
-- **Cost gate — live.** Refuses when the supplier's multiplier for this account
-  exceeds `MAX_SUPPLIER_MULTIPLIER` (1.05). This is the layer that actually
-  protects the money: it measures our real cost for this specific account
-  instead of inferring it from a country.
-- **Country gate — deliberately inert.** `COUNTRY_BY_REGION_SIGNAL` is empty,
-  so `resolveCountry` returns null for every account alive and the five named
-  countries match nothing. This is not an oversight and must not be "finished"
-  by pasting in a zone→country table off a forum. An empty table refuses
-  nobody; a guessed one refuses paying Pakistani customers *and* still misses
-  the expensive accounts. It gets populated from labelled lookups or not at all.
+> According to the request of the mlbb team, we do not support recharge for
+> users in Indonesia, Malaysia, the Philippines, Singapore, and Russia for the
+> time being.
 
-Refusals return 403 with a deliberately vague message — the customer has made
-no mistake, so there is nothing to correct, and naming the rule would only tell
-someone which field to change to get around it. The reason lands in the server
-log instead. Every lookup, allowed or refused, logs `[region]` with
-zone/multiplier/country, so live traffic accumulates the sample that eventually
-fills the table.
+**Exactly the five countries the owner named.** SmileOne already enforces this
+policy itself, sourced from Moonton, at `getrole`, read-only, before a rupee
+moves. There is nothing for us to detect. The zone→country table was deleted
+rather than filled in, and `SUPPLIER_BLOCKED_COUNTRIES` now exists purely as
+documentation with an explicit note not to enforce it — a local copy would need
+a mapping that does not exist and would go stale the day Moonton revises the
+list, which "for the time being" says outright will happen. The status code is
+the stable part; the country names in the message are not.
 
-Eight logic checks cover the live baseline, per-product precedence over the
-top-level multiplier, the floor boundary in both directions, and the fallbacks.
+**This was previously surfacing as a 503.** `unwrapEnvelope` throws on any
+non-200 upstream status, and 201 fell through to the generic handler, so a
+Philippine customer was told "we can't reach the game servers right now, try
+again shortly" — untrue, and cruel against a permanent no. Status 201 now maps
+to `SmileOneRegionBlockedError` → `RegionNotServedError` → a 403 with a polite
+message and no field flagged, because the customer has made no mistake. The
+upstream wording is logged, never forwarded (rule 7).
+
+**The cost gate survives as a separate, non-duplicate concern.**
+`lib/services/region-policy.ts` catches the account SmileOne *will* serve but at
+a multiplier above what our catalogue assumes (`> 1.05`). Honest caveat: no
+account has ever come back above 1.0043, so its refusal branch has only been
+exercised by the seven logic checks, never in the field.
+
+**Verified end to end**, not just in unit logic: through the running app,
+`ml-dia-86` with the Pakistani account returns 200 and `proplayer123`; the
+Philippine account returns 403 and the refusal message renders in the checkout
+form with neither input marked as an error.
 
 **Known gap, recorded not hidden.** The gate is bypassable by POSTing straight
 to `/api/checkout/create-order`, which takes `confirmedUsername` from the
 request body and never re-verifies. Harmless today — nothing can be delivered
-while the `createorder` gate is shut — but it must be closed before Phase 6.
-The fix is to re-run `verifyGameAccount` inside `createPendingOrder`, which
-would also stop rule 1 leaking in through a client-supplied username. Not done
+while the `createorder` gate is shut — but it must close before Phase 6. The
+fix is to re-run `verifyGameAccount` inside `createPendingOrder`, which would
+also stop rule 1 leaking in through a client-supplied username. Not done
 unilaterally: it makes order creation depend on SmileOne being reachable, so
 supplier downtime would block sales rather than just delay delivery. The owner
-decides that trade, not me.
+decides that trade.
 
 **Next**
 
-- Owner to supply labelled Player IDs; re-run the probe; either populate
-  `COUNTRY_BY_REGION_SIGNAL` or delete it and let the cost gate stand alone.
 - Owner to decide the create-order bypass trade before Phase 6.
+- No further region work. The country question is answered and closed; do not
+  reopen it by building a zone lookup.
 
 ## 2026-08-20 — The palette is the logo: navy and azure, measured
 

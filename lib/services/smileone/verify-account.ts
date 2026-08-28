@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getRole, SmileOneError } from "@/lib/services/smileone/client";
+import { getRole, SmileOneRegionBlockedError } from "@/lib/services/smileone/client";
 import { evaluateRegionPolicy } from "@/lib/services/region-policy";
 
 /**
@@ -131,33 +131,36 @@ export async function verifyGameAccount(args: {
       zoneId: args.zoneId,
     });
   } catch (error) {
-    if (error instanceof SmileOneError) throw error;
+    /*
+     * The supplier's own country check answered no. Collapsed into our single
+     * region concept here so the controller has one refusal to handle rather
+     * than two that mean the same thing to a customer.
+     *
+     * The upstream wording is logged and goes no further (rule 7): it names
+     * all five restricted countries, which tells the owner what happened and
+     * would tell a customer more about the rule than they need.
+     */
+    if (error instanceof SmileOneRegionBlockedError) {
+      console.warn("[region] supplier refused the account's country", {
+        upstreamMessage: error.upstreamMessage,
+      });
+      throw new RegionNotServedError();
+    }
     throw error;
   }
 
   if (!role.username) throw new AccountNotFoundError();
 
+  /*
+   * Reached only for accounts the supplier is willing to serve — the five
+   * restricted countries never get this far, they are refused upstream with
+   * status 201. What is left to check is whether serving this one would cost
+   * us more than the catalogue price assumes.
+   */
   const decision = evaluateRegionPolicy({
-    zone: role.zone,
     changePrice: role.changePrice,
     priceMultipliers: role.priceMultipliers,
     supplierProductId: args.smileOneProductId,
-  });
-
-  /*
-   * Logged for every lookup, allowed or refused — not just refusals.
-   *
-   * The region signal can only be decoded by comparing accounts whose country
-   * is known, and real checkout traffic is a far larger sample than anything
-   * we can assemble by hand. This line is how that sample accumulates. No
-   * Player ID is written: `zone` is a small integer shared by many accounts,
-   * so it identifies a server group rather than a person.
-   */
-  console.info("[region] account lookup", {
-    zone: role.zone,
-    multiplier: decision.multiplier,
-    country: decision.country ?? "unknown",
-    allowed: decision.allowed,
   });
 
   if (!decision.allowed) {
@@ -165,7 +168,6 @@ export async function verifyGameAccount(args: {
       reason: decision.reason,
       zone: role.zone,
       multiplier: decision.multiplier,
-      country: decision.country ?? "unknown",
     });
     throw new RegionNotServedError();
   }

@@ -15,56 +15,52 @@ import "server-only";
  * are guesswork. Building against one would refuse paying Pakistani customers
  * and wave through the expensive accounts it was meant to stop.
  *
- * WHAT DOES WORK. `getrole` tells us, before payment and for free, what this
- * specific account will cost us — as a multiplier on the catalogue price.
- * Confirmed live 2026-08-28: the owner's own account returns `change_price: 1`
- * and per-product multipliers of `1` (one at `1.0043`). A costlier account is
- * a number above 1. That measures the actual harm directly, needs no country
- * table, and stays correct when the supplier re-prices.
+ * WHERE THE COUNTRY CHECK ACTUALLY LIVES — NOT HERE. SmileOne performs it
+ * itself and answers `getrole` with status 201 for the five restricted
+ * countries. That is handled in `./smileone/client.ts`, is sourced from
+ * Moonton, costs nothing, and happens before any money moves. This module does
+ * not duplicate it. See SUPPLIER_BLOCKED_COUNTRIES below for why copying it
+ * here would be strictly worse.
  *
- * So the cost gate is the real gate, and the country list below is a second
- * layer that is NOT YET ARMED — see the comment on COUNTRY_BY_REGION_SIGNAL.
+ * WHAT THIS MODULE IS FOR, then, is the case the supplier does NOT refuse: an
+ * account it will happily serve, at a price above what our catalogue assumes.
+ * `getrole` states that cost as a multiplier on the catalogue price. Confirmed
+ * live 2026-08-28: the owner's own account returns `change_price: 1` and
+ * per-product multipliers of `1` (one at `1.0043`). A costlier account is a
+ * number above 1.
+ *
+ * So: the supplier catches the countries it will not serve, and this catches
+ * the ones it will serve but at a price that would cost us money. Neither
+ * needs to know what country anybody is in.
  */
 
 /**
- * Countries the owner has decided not to serve (stated 2026-08-28).
+ * Countries that cannot be topped up. Recorded for documentation only — WE DO
+ * NOT ENFORCE THIS LIST AND MUST NOT TRY TO.
  *
- * ⚠️ THIS LIST CURRENTLY MATCHES NOTHING. It is the recorded policy, not a
- * working filter, because nothing in a SmileOne response has yet been proven
- * to identify a country — see COUNTRY_BY_REGION_SIGNAL. Do not report to the
- * owner that these countries are blocked until that table is populated from
- * real labelled lookups. The cost gate below is what is actually protecting
- * the money today.
+ * The owner named these five, and SmileOne independently answers `getrole`
+ * with status 201 and, verbatim: "According to the request of the mlbb team,
+ * we do not support recharge for users in Indonesia, Malaysia, the
+ * Philippines, Singapore, and Russia for the time being." The same five.
+ * Confirmed live 2026-08-28 against a real Philippine account.
+ *
+ * The check therefore already exists, upstream of us, sourced from Moonton and
+ * applied before we can spend anything. Ours would be a worse copy: it would
+ * need a zone-to-country table that does not exist, and it would go stale the
+ * day Moonton changes the list — which "for the time being" says outright will
+ * happen. `lib/services/smileone/client.ts` maps status 201 to
+ * SmileOneRegionBlockedError; that is the enforcement.
+ *
+ * If the owner ever wants to refuse a country SmileOne is happy to serve, that
+ * is a new mechanism, not an edit to this array.
  */
-export const BLOCKED_COUNTRIES = [
-  "PH", // Philippines
-  "RU", // Russia
-  "MY", // Malaysia
-  "ID", // Indonesia
-  "SG", // Singapore
+export const SUPPLIER_BLOCKED_COUNTRIES = [
+  "Indonesia",
+  "Malaysia",
+  "Philippines",
+  "Singapore",
+  "Russia",
 ] as const;
-
-export type BlockedCountry = (typeof BLOCKED_COUNTRIES)[number];
-
-/**
- * getrole's `zone` value -> ISO country code.
- *
- * ⚠️ DELIBERATELY EMPTY. `zone` is not an echo of the Zone ID we send — a
- * lookup on zone 16932 came back `zone: 1` — and a small integer that ignores
- * our input has the shape of a server-group index. That is a HYPOTHESIS from a
- * single account, not a finding.
- *
- * Populating it needs `npm run smileone:region` run over real Player IDs whose
- * country is already known, from the owner's WhatsApp order history: several
- * Pakistani, several from each blocked country. If `zone` comes back identical
- * for all of them it is not a region key and this table must be deleted rather
- * than filled in with guesses.
- *
- * Until then `resolveCountry` returns null for everyone and the country layer
- * is inert by construction. That is intentional: an empty table refuses nobody,
- * where a guessed one refuses the wrong people.
- */
-const COUNTRY_BY_REGION_SIGNAL: Record<string, string> = {};
 
 /**
  * The most we will pay above catalogue price before refusing the account.
@@ -78,8 +74,6 @@ const COUNTRY_BY_REGION_SIGNAL: Record<string, string> = {};
 export const MAX_SUPPLIER_MULTIPLIER = 1.05;
 
 export type RegionSignals = {
-  /** getrole's `zone` — candidate region marker, meaning unconfirmed. */
-  zone: string | null;
   /** getrole's top-level `change_price`. A multiplier, not a price. */
   changePrice: string | null;
   /** Per-product multipliers from `id_change_price_info`. */
@@ -89,23 +83,13 @@ export type RegionSignals = {
 };
 
 export type RegionDecision =
-  | { allowed: true; multiplier: number; country: string | null }
+  | { allowed: true; multiplier: number }
   | {
       allowed: false;
       /** Which layer refused. Logged, never shown to the customer. */
-      reason: "blocked_country" | "supplier_cost";
+      reason: "supplier_cost";
       multiplier: number;
-      country: string | null;
     };
-
-/**
- * Best-effort country for an account. Null means "we do not know", which is
- * the honest answer for every account until the signal table is populated.
- */
-export function resolveCountry(signals: RegionSignals): string | null {
-  if (!signals.zone) return null;
-  return COUNTRY_BY_REGION_SIGNAL[signals.zone] ?? null;
-}
 
 /**
  * The multiplier that will actually apply to this purchase.
@@ -134,16 +118,11 @@ export function effectiveMultiplier(signals: RegionSignals): number {
  * refusal costs them nothing and there is no payment to reverse.
  */
 export function evaluateRegionPolicy(signals: RegionSignals): RegionDecision {
-  const country = resolveCountry(signals);
   const multiplier = effectiveMultiplier(signals);
 
-  if (country && (BLOCKED_COUNTRIES as readonly string[]).includes(country)) {
-    return { allowed: false, reason: "blocked_country", multiplier, country };
-  }
-
   if (multiplier > MAX_SUPPLIER_MULTIPLIER) {
-    return { allowed: false, reason: "supplier_cost", multiplier, country };
+    return { allowed: false, reason: "supplier_cost", multiplier };
   }
 
-  return { allowed: true, multiplier, country };
+  return { allowed: true, multiplier };
 }
