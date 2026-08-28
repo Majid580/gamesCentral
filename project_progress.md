@@ -5,6 +5,56 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-08-28 — Region gating: a probe, a baseline, and one wrong assumption corrected
+
+The owner wants players from countries where MLBB recharge costs more than our
+listed price turned away politely before payment. The obvious implementation —
+map Zone ID to country — **does not exist and must not be built.** MLBB Zone
+IDs are server shards assigned at account creation; players from Pakistan,
+Indonesia and Brazil sit on the same zones. The "server ID → country"
+spreadsheets on forums are guesswork, and here a wrong guess means delivering
+at a loss.
+
+**The signal we need is already in a response we call on every checkout.**
+`getrole` returns three undocumented fields the production client narrows away:
+`zone` (not an echo of what we send), `use`, and `id_change_price_info`. New
+read-only probe at `scripts/smileone-region-probe.mts`
+(`npm run smileone:region`) prints the payload verbatim for several labelled
+accounts and tabulates them side by side. It calls `getrole` and nothing else,
+routes every request through `assertEndpointPermitted`, and self-checks that
+the `createorder` gate is still shut before it opens a socket.
+
+**Baseline, owner's own account 1638539586/16932:** `zone=1`,
+`change_price=1`, `use=c`, 11 entries in `id_change_price_info`, all `1` except
+product 25 at `1.0043`.
+
+**`change_price` is a multiplier, not a price — CLAUDE.md is misleading on
+this.** It reads as "the source of truth for the final charge over the cached
+product-list price", which invites Phase 6 to *substitute* it. The live value
+is `1`, and no diamond pack costs 1 BRL. Both `change_price` and the
+`id_change_price_info` entries are scaling factors. Phase 6 must multiply.
+Substituting would charge one rupee-equivalent for every pack in the shop.
+
+That correction is also the answer to the original question, and a better one
+than a country list: the multiplier measures *our actual cost for this specific
+account*, in supplier currency, per product. A margin floor built on it needs no
+lookup table, cannot go stale when SmileOne re-prices, and fails in the safe
+direction. A country allowlist can only ever approximate it — so it becomes the
+second layer, not the first.
+
+**Blocked on ground truth.** One account is a baseline, not a finding. The
+region signal only appears as a *difference* between accounts whose country we
+already know. Needs real Player IDs from the owner's WhatsApp order history,
+labelled by country — a few Pakistani, a few from each country to be excluded.
+
+**Next**
+
+- Owner to supply labelled Player IDs; re-run the probe; decide from the table
+  whether `zone` is a usable region key or whether the margin floor carries the
+  gate alone.
+- Confirm the allow list, and whether an excluded region is refused or shown a
+  price that covers its real cost.
+
 ## 2026-08-20 — The palette is the logo: navy and azure, measured
 
 The owner supplied two brand marks — navy "GAMES" with an azure "CENTRAL"

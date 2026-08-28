@@ -186,16 +186,49 @@ known_issues:
     lib/services/rate-limit.ts if real traffic ever approaches 1/second.
   - |
     getrole's `zone` is NOT the Zone ID that was sent — a lookup on zone 16932
-    returned `zone: 1`. Meaning unknown. The checkout UI shows the customer's
-    typed Zone ID, not this, and it must stay that way. Do not "fix" the UI to
-    display role.zone.
+    returned `zone: 1`. Meaning still unknown. The checkout UI shows the
+    customer's typed Zone ID, not this, and it must stay that way. Do not
+    "fix" the UI to display role.zone.
+    It is now the leading CANDIDATE for a region marker (see the region-gate
+    entry below): a small integer that ignores our input is the shape a
+    server-group index would take. One account is not enough to tell — that is
+    a hypothesis, not a finding.
   - |
-    getrole returns an undocumented `id_change_price_info`: a per-product
-    [{product_id, change_price}] array (observed: all 1 except product 25 at
-    1.0043 — they read as multipliers, not prices). Phase 6 needs to decide
-    how this interacts with the top-level change_price before computing any
-    final charge. It also listed product_id 20340, which is NOT in the
-    productlist response — another sign the catalogue mapping is not settled.
+    RESOLVED 2026-08-28 — getrole's `change_price` IS A MULTIPLIER, NOT A
+    PRICE. The live baseline returns top-level `change_price: 1` alongside an
+    `id_change_price_info` array whose entries are also 1 (except product 25 at
+    1.0043). No diamond pack costs 1 BRL, so 1 cannot be a price; both fields
+    are scaling factors applied to the productlist price.
+    This corrects the wording in CLAUDE.md ("source of truth for the final
+    charge"), which reads as though change_price replaces the catalogue price.
+    Phase 6 must MULTIPLY, not substitute. Substituting would charge 1 BRL.
+    Still open: which of the two fields wins when they disagree, and why
+    id_change_price_info lists 11 products when productlist returns 16 —
+    including product_id 20340 and 16642, which are in neither. The catalogue
+    mapping is still not settled.
+  - |
+    REGION GATE — under investigation, blocks nothing yet. The owner wants
+    accounts from countries whose recharge costs more than our listed price
+    turned away before payment ("we don't serve that country yet").
+    MLBB Zone IDs DO NOT ENCODE COUNTRY. Players from different countries
+    share zones; the "server ID to country" lists on forums are guesswork and
+    must not be built against — a wrong guess delivers at a loss.
+    The real signals are all inside getrole, and all free to read:
+      - `change_price` / `id_change_price_info` multipliers — these measure
+        the thing that actually matters (our cost) directly, in supplier
+        currency. A margin floor built on these needs no country table and
+        cannot go stale.
+      - `zone` — candidate region index, unproven.
+      - status 20003 — the BR product may simply refuse foreign accounts
+        outright, in which case checkout already blocks them. Untested.
+    Probe: `npm run smileone:region -- <playerId>:<zoneId>:<label> …`
+    (scripts/smileone-region-probe.mts, getrole only, prints the raw payload).
+    BASELINE 2026-08-28, owner's own account 1638539586/16932:
+      zone=1  change_price=1  use=c  11 products  product 25 = 1.0043
+    BLOCKED ON GROUND TRUTH: the signal is only visible as a difference
+    between accounts of known-different countries. Needs real Player IDs from
+    the owner's WhatsApp order history, labelled by country. One account is a
+    baseline, not an answer.
   - |
     RESOLVED AS A DECISION 2026-08-18, not deferred again — do not re-open
     without a new reason. script-src keeps 'unsafe-inline'. The only
