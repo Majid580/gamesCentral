@@ -5,6 +5,48 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-09-04 — The two "never observed" animations, observed
+
+Two known issues had sat unresolved because a previous session could not see
+the page: the scroll reveal and the product-card tilt were both recorded as
+"CSS computes correctly, motion unwatched, confirm in a real browser." Both are
+now settled against the running app, and the recorded diagnosis turned out to
+be half wrong in a way worth writing down.
+
+**Scroll reveal fires.** After scrolling, 17 of 40 `[data-reveal]` elements had
+`opacity: 1` and `transform: none`, and every element intersecting the viewport
+was revealed. The old note said IntersectionObserver "does not report
+intersections in a hidden document" — it does. IO delivery does not depend on
+the page painting.
+
+**The card tilt is wired correctly, end to end.** A synthetic hover aimed at
+80% across and 20% down the first card produced `--px: 80.33%`,
+`--py: 17.90%`, `--tilt-x: 3.85deg`, `--tilt-y: 3.64deg` — the delegated
+`pointermove` handler, its rAF batching, and the rect arithmetic all doing
+exactly what they should — and the element's computed transform reaches a real
+3D rotation matrix rather than the perspective-only identity it sits at when
+at rest.
+
+**The reason the motion still cannot be watched is now measured rather than
+guessed: with the Browser pane hidden, the tab produces zero frames.** Not few
+— zero: 0 `requestAnimationFrame` callbacks in 10.3 seconds of wall clock. CSS
+transitions advance on the animation clock, so a 450ms transition can sit
+unfinished for ten seconds and only moves when an input action forces a frame.
+That one fact explains every symptom the earlier session logged as separate
+mysteries: the screenshot timeouts, the transform that reads as identity a full
+second after a hover, and `scrollTop = n` appearing to do nothing while
+`scrollTo({ behavior: "instant" })` works — `scroll-behavior: smooth` is set
+globally, and a smooth scroll needs frames it was never going to get.
+
+**What that means for future sessions.** Correctness is verifiable headlessly,
+and now has been. Smoothness and timing are not, and never will be from this
+side — judging those needs the pane open in front of a person. This should not
+be re-opened as a code defect.
+
+**No code changed.** Nothing was found to be wrong.
+
+---
+
 ## 2026-09-04 — A test suite, because every invariant was verified exactly once
 
 **The gap.** This repo handles real money and had zero automated tests. Every

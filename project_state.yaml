@@ -304,14 +304,32 @@ known_issues:
     rebuilding leaves the header stale and blocks payments.
   - "The admin login `?from=` redirect is already guarded against open redirect (startsWith('/admin') + explicit '//' rejection). Checked 2026-08-18; recorded so it is not re-derived."
   - "The pre-paint theme script triggers a React dev-only console warning about script tags in a component tree. Intentional: next/script's beforeInteractive replays inline code after the framework chunks and would reintroduce a theme flash. Do not 'fix' it — see the comment in app/layout.tsx."
-  - "Scroll reveal was never observed firing: the Browser pane stayed hidden all session, and IntersectionObserver does not report intersections in a hidden document. Wiring verified, animation unwatched. Confirm visually in a real browser."
   - |
-    Pointer tilt / specular on the product cards has never been observed. The
-    Browser pane stayed hidden all session, so the page never composites,
-    requestAnimationFrame never fires, and screenshots time out. Same root
-    cause as the unobserved scroll reveal. CSS computes correctly (slab shadow
-    and 3D matrix both read back) but the motion is unwatched. Confirm in a
-    real browser.
+    RESOLVED 2026-09-04 — SCROLL REVEAL FIRES. Verified in the running app, not
+    inferred: after scrolling, 17 of 40 [data-reveal] elements had opacity 1
+    and transform none, and every element intersecting the viewport was
+    revealed. The earlier note claimed IntersectionObserver "does not report
+    intersections in a hidden document" — that is wrong, and the wrong half is
+    worth keeping visible so it is not re-derived. IO delivery does not depend
+    on the page painting.
+  - |
+    RESOLVED 2026-09-04 as far as anything headless can — POINTER TILT IS
+    WIRED CORRECTLY, END TO END. A synthetic hover at 80% across and 20% down
+    the first card produced exactly --px: 80.33%, --py: 17.90%,
+    --tilt-x: 3.85deg, --tilt-y: 3.64deg, and the element's computed transform
+    reaches a genuine 3D rotation matrix. The delegated pointermove handler,
+    the rAF batching and the rect arithmetic all work.
+    WHAT IS STILL UNOBSERVED IS THE MOTION ITSELF, and now for a measured
+    reason rather than a guessed one: with the Browser pane hidden the tab
+    produces ZERO frames — 0 rAF callbacks in 10.3 seconds of wall clock,
+    an effective 0 fps. CSS transitions advance on the animation clock, so they
+    only move when an input action forces a frame; a 450ms transition can sit
+    unfinished for ten seconds. That also explains the screenshot timeouts and
+    why `scrollTop = n` appears to do nothing while `scrollTo({behavior:
+    "instant"})` works.
+    So: correctness is verifiable headlessly and was verified. SMOOTHNESS AND
+    TIMING ARE NOT, and never will be from this side — judging those needs the
+    pane open in front of a person. Do not re-open this as a code defect.
   - |
     RESOLVED — kept as a note because the failure mode is easy to reintroduce.
     A CSS transition captures the computed colour and does not re-run when the
