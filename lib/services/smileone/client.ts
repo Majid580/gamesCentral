@@ -40,19 +40,33 @@ function config() {
 }
 
 export class SmileOneError extends Error {
+  /**
+   * Declared as plain fields and assigned in the body rather than as
+   * constructor parameter properties. Node's strip-only TypeScript mode cannot
+   * parse those, and this module is imported directly by `npm test` — same
+   * reasoning as `./safety.ts`, which avoids them so the probe script runs
+   * through the identical gate.
+   */
+  readonly endpoint: string;
+  readonly status?: number;
+  /**
+   * The application-level `status` from the response envelope, as opposed to
+   * the HTTP status. Present only when the upstream answered with HTTP 200
+   * but reported a failure in the body.
+   */
+  readonly upstreamStatus?: string;
+
   constructor(
     message: string,
-    readonly endpoint: string,
-    readonly status?: number,
-    /**
-     * The application-level `status` from the response envelope, as opposed to
-     * the HTTP status. Present only when the upstream answered with HTTP 200
-     * but reported a failure in the body.
-     */
-    readonly upstreamStatus?: string,
+    endpoint: string,
+    status?: number,
+    upstreamStatus?: string,
   ) {
     super(message);
     this.name = "SmileOneError";
+    this.endpoint = endpoint;
+    this.status = status;
+    this.upstreamStatus = upstreamStatus;
   }
 }
 
@@ -269,12 +283,18 @@ const REGION_BLOCKED_STATUS = "201";
  * here and cruel — the customer would retry forever against a permanent no.
  */
 export class SmileOneRegionBlockedError extends Error {
-  constructor(
-    /** The upstream wording, for the server log. Never shown to a customer. */
-    readonly upstreamMessage: string,
-  ) {
+  /**
+   * The upstream wording, for the server log. Never shown to a customer.
+   *
+   * A plain field rather than a parameter property, for the reason given on
+   * SmileOneError above.
+   */
+  readonly upstreamMessage: string;
+
+  constructor(upstreamMessage: string) {
     super("The supplier does not serve this account's country.");
     this.name = "SmileOneRegionBlockedError";
+    this.upstreamMessage = upstreamMessage;
   }
 }
 

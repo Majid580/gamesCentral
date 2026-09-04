@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/register-alias.mjs --test \"tests/**/*.test.mts\"",
     "smileone:probe": "node --env-file=.env.local scripts/smileone-check.mts",
     "smileone:region": "node --env-file=.env.local scripts/smileone-region-probe.mts",
     "catalogue:verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-catalogue.mts",

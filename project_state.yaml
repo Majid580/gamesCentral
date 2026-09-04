@@ -1,5 +1,5 @@
 project: Games Central
-last_updated: "2026-08-20"
+last_updated: "2026-09-04"
 current_phase: "phase-5-payfast — BLOCKED ON PAYFAST ONLY. Phases 0-4, 6, 7, 8 complete. Everything that does not need a merchant account is built and exercised; fulfilment is written and drilled but CANNOT deliver (gate closed)."
 
 # ---------------------------------------------------------------------------
@@ -65,6 +65,7 @@ completed_features:
   - "Phase 8: manual status recovery via the same status machine + atomic conditional update (rules 3 and 8)"
   - "Phase 8: bcrypt password hashing; MongoDB TTL-backed login rate limiting on email AND IP (5 per 15 min)"
   - "Phase 8: npm run admin:create -- <email> [admin|operator] — generates the password, never takes one as an argument"
+  - "Testing: npm test — 87 tests on Node's built-in runner, no new dependencies. Covers the delivery gate, rule 5 money round trip, rule 3 composed-order idempotency, rule 8 status graph, rule 6 assertScalar, phone matching, the four live getrole answers, the region cost gate, request signing and the catalogue transcription. Pure logic only — see tests/README.md for what is NOT covered."
   - "Phase 2: SmileOne LIVE account reachable on https://www.smile.one — productlist returns HTTP 200 with 16 products; double-MD5 signing confirmed correct against the real API"
   - "Phase 2: delivery gate — lib/services/smileone/safety.ts endpoint allowlist; createorder throws before the fetch unless SMILEONE_ALLOW_FULFILMENT=1 (absent by design)"
   - "Phase 2: LIVE_ACCOUNT_SAFETY.md + CLAUDE.md banner — the no-test-deliveries rule is loaded into every session automatically"
@@ -149,6 +150,24 @@ pending_features:
   - "Phase 11: Hostinger production cutover"
 
 known_issues:
+  - |
+    THE TEST SUITE COVERS PURE LOGIC ONLY — a green `npm test` is not a covered
+    codebase. Nothing in tests/ touches MongoDB and nothing reaches the network.
+    Still verified by hand, or not at all: createPendingOrder,
+    findOrderForGuest, verifyAndSettleOrder, the fulfilment executor, the
+    sweeper, rate limiting, admin auth, and every route handler. In particular
+    the ATOMIC CONDITIONAL UPDATES that rules 3 and 8 rest on are a property of
+    MongoDB and the query — they cannot be asserted without a live connection,
+    so they remain unproven by anything automatic. tests/README.md has the
+    full list. Do not cite the test count as evidence about those paths.
+  - |
+    NO TYPESCRIPT PARAMETER PROPERTIES in any module a test imports. Node's
+    strip-only TypeScript mode cannot parse `constructor(readonly x: string)`,
+    and the whole file fails to load — not the class, the file. safety.ts had
+    already adopted plain field declarations for this reason; smileone/client.ts
+    was converted on 2026-09-04 when it turned out to be untestable.
+    lib/services/payfast/client.ts still uses them and will need the same
+    treatment the day it gets a test.
   - |
     ⛔ LIVE SMILEONE ACCOUNT — NOT A DEV SANDBOX. There is no sandbox; the only
     working host is production. Every request is against the owner's real
@@ -539,6 +558,7 @@ next_steps:
   - "Schedule POST /api/cron/fulfil-orders every 5 min on the production host (curl + CRON_SECRET bearer)"
 
   # --- remaining phases ---
+  - "Testing: extend the suite to the DB-backed services once a disposable test database exists (a separate Atlas database, never gamescentral). The atomic conditional updates behind rules 3 and 8 are the ones worth having."
   - "Phase 9: npm-run security review (claude-security) across money, auth and fulfilment"
   - "Phase 9.5: strix-pentest against our own deployment"
   - "Phase 10: performance pass"

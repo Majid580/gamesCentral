@@ -5,6 +5,87 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-09-04 — A test suite, because every invariant was verified exactly once
+
+**The gap.** This repo handles real money and had zero automated tests. Every
+rule in Section 12 had been checked by hand, in a session, and written up in
+this file. That is a good record and a bad safety net: prose does not fail a
+build, and the things most worth protecting here fail *silently* — a doubled
+delivery, a payment marked as never having happened, a mistyped Player ID
+accepted. None of those announce themselves.
+
+**87 tests, no new dependencies.** Node's built-in runner and `node:assert`
+with native TypeScript stripping — the same way every script in `scripts/`
+already runs. `npm test`. The full run takes about a second.
+
+Weighted towards the expensive-and-silent failures rather than towards
+coverage:
+
+- **`safety-gate.test.mts`** — the live-account gate, and the most important
+  file here. Pins that the allowlist is matched *exactly* (a `startsWith` or
+  `includes` implementation would let `/getrole/../createorder` through), that
+  the escape hatch opens on the string `"1"` and on nothing else — not `"true"`,
+  not `"yes"`, not `"0"` — and that `SMILEONE_ALLOW_FULFILMENT=1` is not
+  present in whatever environment the suite runs in.
+- **`money.test.mts`** — rule 5, plus the `paisaToAmountString` /
+  `amountStringToPaisa` round trip, which *is* the amount check in
+  `verify-payment.ts`. Includes the case that matters most: an unreadable
+  amount parses to `null`, never `0`.
+- **`fulfilment-plan.test.mts`** — rule 3 inside a single order. "1050
+  Diamonds" is three supplier calls, and a retry that re-runs delivered ones
+  costs the owner real diamonds. Repeated packs, out-of-order deliveries, and
+  over-delivery are all pinned.
+- **`order-status.test.mts`** — rule 8 as a graph property, checked
+  *transitively*: no status where the customer has paid may reach `failed` by
+  any route, including through some intermediate status added later.
+- **`order-lookup-guard.test.mts`** — `assertScalar` against operator injection
+  (arrays included — Mongo matches any element, and a `typeof x === "object"`
+  check written the obvious way lets them through), and phone normalisation,
+  which decides whether one customer can see another's order.
+- **`getrole-responses.test.mts`** — the four live answers, driven through a
+  hand-stubbed `fetch`. Three of them were once mapped to "we can't reach the
+  game servers, try again shortly" — a permanent refusal dressed as an outage.
+- **`region-policy.test.mts`**, **`smileone-sign.test.mts`**,
+  **`catalogue.test.mts`** — the cost gate whose refusal branch has never fired
+  in the field, the double-MD5 signing, and the spreadsheet transcription.
+
+**Verified by breaking things, not by watching them pass.** A suite that has
+never failed is an unproven suite. Two mutations were applied to production
+code and reverted:
+
+- `assertEndpointPermitted` changed to match the allowlist by substring — two
+  tests failed, including the path-traversal lookalike.
+- `paid: ["fulfilling"]` changed to `paid: ["fulfilling", "failed"]` — the rule
+  8 graph test failed.
+
+**One production change, and it was forced.** `SmileOneError` and
+`SmileOneRegionBlockedError` used TypeScript constructor parameter properties,
+which Node's strip-only mode cannot parse, so `client.ts` could not be imported
+by a test at all. Both are now plain field declarations assigned in the body —
+no behaviour change, and it is the same convention `safety.ts` already adopted
+for the same reason. `lib/services/payfast/client.ts` still uses parameter
+properties; it has no tests yet, and converting it can wait until it does.
+
+**What the suite deliberately does not cover, recorded so a green run is not
+mistaken for a covered codebase.** Pure logic only: nothing touches MongoDB and
+nothing reaches the network. So `createPendingOrder`, `findOrderForGuest`,
+`verifyAndSettleOrder`, the fulfilment executor, the sweeper, rate limiting and
+admin auth are all still verified by hand — and in particular the atomic
+conditional updates that rules 3 and 8 rest on are a property of MongoDB and
+the query, which cannot be asserted without one. `tests/README.md` carries the
+full list.
+
+**`npm test` never loads `.env.local`.** The owner's real SmileOne credentials
+are not present in the test process. `getrole-responses.test.mts` sets fake
+ones and restores the environment in a `finally`, and its `fetch` stub asserts
+the endpoint before answering — a refactor that changed the URL fails the test
+rather than dispatching somewhere real.
+
+**Verified:** `npm test` 87/87, `npm run lint` clean, `npx tsc --noEmit` clean,
+`npm run build` green.
+
+---
+
 ## 2026-08-28 — Region gating: a probe, a baseline, and one wrong assumption corrected
 
 The owner wants players from countries where MLBB recharge costs more than our
