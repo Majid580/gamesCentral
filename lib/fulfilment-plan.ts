@@ -33,6 +33,13 @@ import { MOBILE_LEGENDS_CATALOGUE, type CatalogueItem } from "./catalogue-source
  *
  * Captured live from `productlist` on 2026-08-16 (`npm run smileone:probe`).
  * Never displayed to a customer — `spu` is supplier shorthand (Section 8).
+ *
+ * `npm run catalogue:drift` re-fetches `productlist` and diffs it against this
+ * table, so the capture is no longer taken on trust. Run it before a deploy.
+ * It fails on a pack that vanished or whose `spu` changed while a fulfilment
+ * plan still depends on it — the second being the quiet one, since a re-spec'd
+ * pack keeps delivering perfectly and delivers the wrong amount. Last verified
+ * clean, all 16 packs unchanged, 2026-09-06.
  */
 export type SupplierPack = {
   /** SmileOne's `id`, sent as `productid`. */

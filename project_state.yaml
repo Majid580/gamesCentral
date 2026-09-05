@@ -134,6 +134,34 @@ completed_features:
   - "Brand assets: public/brand/logo-light.svg and logo-dark.svg are PLACEHOLDERS pending the owner's real exports. Same names, same 640x400 box — dropping the real files over them needs no code change. brand:check reports while they are still placeholders."
   - "Rebrand: transactional email palette re-tinted to match (lib/services/email/templates.ts keeps hardcoded hex because email clients cannot resolve CSS variables); themeColor meta and ThemeToggle's THEME_COLOR map moved to the new canvases."
   - |
+    SUPPLIER DRIFT CHECK, 2026-09-06 — npm run catalogue:drift. Re-fetches
+    productlist (READ-ONLY, through assertEndpointPermitted, spends nothing)
+    and diffs it against the SUPPLIER_PACKS capture of 2026-08-16, which
+    nothing had checked in the three weeks since. catalogue:verify cannot do
+    this — it is arithmetic over two local files and never leaves the machine.
+    Fails non-zero when a pack a fulfilment plan depends on has VANISHED (an
+    order fails loudly at delivery) or its SPU CHANGED (the quiet one: it keeps
+    working and delivers the wrong number of diamonds, because every plan reads
+    "78&8 Diamond" as 86). Names the affected customer SKUs, not just the
+    supplier id.
+    FIRST RUN CLEAN: all 16 packs present, all 16 spu strings byte-identical.
+    Also carries a BRL price baseline as at 2026-09-06 (the pack capture never
+    recorded price). Price movement is REPORTED, never a failure — it is margin,
+    and nothing else watches it; region-policy.ts guards the per-account
+    multiplier, a different number entirely.
+  - |
+    DESTRUCTIVE INDEX DROPS GATED, 2026-09-06 — db:sync-indexes computes the
+    plan with diffIndexes() first, and only a DROP needs `--yes`. Creates are
+    safe and idempotent and stay ungated, so a run with nothing to drop behaves
+    exactly as it always did and the deploy step is unchanged. Pending drops
+    without --yes refuse the WHOLE run rather than applying half a plan.
+    Both paths exercised against the real database: a normal run reports seven
+    models in sync; removing one index declaration produced the refusal naming
+    LoginAttempt: key_1_at_-1 with exit 1, and the index was confirmed still
+    present afterwards. The script now also prints which user it connected as,
+    which today answers `root` — the outstanding Atlas item stating itself on
+    every deploy.
+  - |
     PHASE 9 SECURITY REVIEW, 2026-09-06 — full-repo audit across money, auth
     and fulfilment. Four fixes landed: the admin-login timing oracle (below),
     the err_code_desc payment-status fallback (below), a claim re-assertion in
@@ -199,7 +227,18 @@ pending_features:
     The gate stays shut until PayFast is verified end-to-end AND the owner lifts
     it in person. This line is not authorisation.
   - "Brand: owner to paste the real logo exports over public/brand/logo-light.svg and logo-dark.svg (same names, transparent background, both on one 640x400-ratio canvas), then run npm run brand:check. No code change needed — the placeholders are wired identically."
-  - "Phase 9.5: live pen test (strix-pentest) against our own deployment — needs Docker Desktop. The Phase 9 SOURCE audit is done (2026-09-06); this is the separate one that attacks a running site."
+  - |
+    Phase 9.5: live pen test (strix-pentest). The Phase 9 SOURCE audit is done
+    (2026-09-06); this is the separate one that attacks a RUNNING site.
+    ⛔ BLOCKED ON A TARGET, NOT ON DOCKER — Docker Desktop is installed and
+    working. The only deployment that exists is the live Vercel one, and it is
+    wired to the PRODUCTION Atlas database and the owner's REAL SmileOne
+    account: /api/checkout/verify-account reaches getrole on every call. An
+    automated attack tool pointed there would write garbage into the real order
+    book, send real email, and flood the live merchant account — the exact
+    failure the global rate limit exists to prevent, and a suspended merchant
+    account needs a phone call. Needs a throwaway deployment and a throwaway
+    database first. Owner decision.
   - "Phase 10: performance pass"
   - "Phase 11: Hostinger production cutover"
 

@@ -5,6 +5,78 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-09-06 — Two things nobody was watching: the supplier, and index drops
+
+### The supplier can change our catalogue without telling us
+
+`SUPPLIER_PACKS` is a hand-copied capture of `productlist` from 2026-08-16, and
+every fulfilment plan is written against it. Nothing had checked it since — for
+three weeks. `npm run catalogue:verify` cannot: it is pure arithmetic over two
+local files and never leaves the machine.
+
+`npm run catalogue:drift` now re-fetches `productlist` and diffs it. Read-only,
+through the same `assertEndpointPermitted()` allowlist the app uses, so
+`createorder` is unreachable from it even by accident; it spends nothing.
+
+The failure it exists for is the quiet one. A pack that **vanished** makes an
+order fail loudly at delivery — bad, but visible. A pack whose **`spu`
+changed** keeps working perfectly and delivers the wrong number of diamonds to
+a paying customer, indefinitely, because every plan's arithmetic depends on
+reading `"78&8 Diamond"` as 86. Both fail the run non-zero when a fulfilment
+plan depends on the pack, and the report names the customer-facing SKUs
+affected rather than only the supplier id.
+
+**First run: no drift.** All 16 packs still present, all 16 `spu` strings
+byte-identical, all 16 referenced by a plan. That was previously an assumption
+and is now a check.
+
+It also records a **price baseline** (BRL, as at 2026-09-06 — a later baseline
+than the pack capture, which never recorded price). Movement is reported, never
+a failure: the supplier reprices and nothing breaks when they do. What it costs
+is margin, and nothing else watches it — `region-policy.ts` guards the
+per-account multiplier, a different number that would not move if SmileOne put
+the 9288 pack up by 12%. Verified by perturbing a baseline value and confirming
+the branch fires and names the affected SKU.
+
+### `db:sync-indexes` could drop production indexes with no confirmation
+
+`syncIndexes()` drops indexes that exist in MongoDB but are no longer declared
+in a schema. `DATABASE_URL` points at the live `gamescentral` cluster, because
+there is no other one — so a one-word npm script was an unguarded way to drop
+indexes off production.
+
+Now the plan is computed first with `diffIndexes()`, and **only a drop needs
+`--yes`**. Creating an index is safe and idempotent, and gating that would have
+broken the deploy step the script exists to be — so a run with nothing to drop
+behaves exactly as it always did. Nothing is applied partially: pending drops
+without `--yes` refuse the whole run rather than creating half a plan.
+
+Both paths were exercised against the real database. A normal run is unchanged
+and reports the seven models in sync. Temporarily removing one index
+declaration produced the refusal, naming `LoginAttempt: key_1_at_-1`, exit 1;
+the declaration was restored and the index confirmed still present — nothing
+was dropped.
+
+The script now also prints which user it connected as, which currently answers
+`root`. That is the outstanding Atlas item stating itself every time somebody
+runs a deploy step.
+
+**Verification:** `npm test` 89/89 · `npx tsc --noEmit` clean · `npx eslint`
+clean.
+
+**Not done — and why.** Phase 9.5 (`strix-pentest`) is still untouched, and
+Docker being available is not the blocker. The only deployment to point it at
+is the live Vercel one, which is wired to the production Atlas database and to
+the owner's real SmileOne account: `/api/checkout/verify-account` reaches
+`getrole` on every call. Turning an automated attack tool on that would write
+garbage into the real order book, send real email, and flood the live merchant
+account — the exact failure the global rate limit exists to prevent, and
+`known_issues` is explicit that a suspended merchant account needs a phone
+call. It needs a throwaway deployment and database first, which is an owner
+decision, not something to assume.
+
+---
+
 ## 2026-09-06 — Phase 9: the security review, and a defence that had never worked
 
 A full-repo audit across money, auth and fulfilment. Four fixes went in; most
