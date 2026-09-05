@@ -78,9 +78,20 @@ export async function verifyAdminCredentials(
     .select("+hashedPassword email role isActive")
     .lean();
 
-  /* A real-shaped hash to compare against when there is no user, so the timing
-     of a miss matches the timing of a hit. */
-  const DUMMY_HASH = "$2b$12$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012";
+  /*
+   * A real bcrypt hash (cost 12, of a throwaway string) to compare against when
+   * there is no such user, so the timing of a miss matches the timing of a hit.
+   *
+   * It has to be a PARSEABLE hash, not merely a hash-shaped string. The value
+   * that stood here was two characters too long — 55 after the `$2b$12$` prefix
+   * where a real digest has 53 — so bcryptjs rejected it and returned false
+   * without doing any work: 0.2ms for an address with no admin against 278ms
+   * for one with. That is precisely the enumeration oracle this constant exists
+   * to close, held open by the constant meant to close it.
+   *
+   * `tests/admin-auth-timing.test.mts` measures it now instead of trusting it.
+   */
+  const DUMMY_HASH = "$2b$12$Zpm17Hkp.zjB.4AAbd8QBefxiX4u.HCOo2xsqRTHr0f5Bg6bDHxdW";
 
   const ok = await bcrypt.compare(password, admin?.hashedPassword ?? DUMMY_HASH);
 

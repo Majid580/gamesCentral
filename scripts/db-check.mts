@@ -7,6 +7,12 @@
  * module is `server-only` and cannot be loaded outside the Next.js runtime.
  * It mirrors the same connect options so a green result here means the app's
  * pool will behave the same way.
+ *
+ * It is also the check that has to stay honest when the Atlas credentials are
+ * rotated from root to a least-privilege user (see known_issues). The app
+ * needs `readWrite` on `gamescentral` and nothing more; this script must not
+ * report a database as broken merely because it asked for something the app
+ * never asks for.
  */
 
 import mongoose from "mongoose";
@@ -23,6 +29,18 @@ if (!uri) {
 /** Strips credentials so a connection string is never printed or logged. */
 function redact(connectionString: string): string {
   return connectionString.replace(/\/\/[^@]*@/, "//<credentials>@");
+}
+
+/**
+ * The username from a connection string, never the password.
+ *
+ * Printed because after a credential rotation the first question is not "did
+ * it connect" but "did it connect as the new user" — and a stale DATABASE_URL
+ * somewhere else on the machine answers the first question perfectly well.
+ */
+function usernameOf(connectionString: string): string {
+  const match = /\/\/([^:/@]+)(?::[^@]*)?@/.exec(connectionString);
+  return match ? decodeURIComponent(match[1]) : "(none in URI)";
 }
 
 const started = Date.now();
@@ -44,12 +62,30 @@ try {
   if (!db) throw new Error("Connected but no database handle was returned.");
 
   const ping = await db.admin().command({ ping: 1 });
-  const build = await db.admin().command({ buildInfo: 1 });
   const collections = await db.listCollections().toArray();
+
+  /*
+   * `buildInfo` runs against the `admin` database, and it is the one call here
+   * that the application itself never makes: lib/models/db.ts sets
+   * `autoIndex: false` and issues no admin command anywhere, so a user scoped
+   * `readWrite` on `gamescentral` alone can be refused this while the app runs
+   * perfectly.
+   *
+   * It therefore must not fail the check. The server version is a convenience;
+   * declaring the database unreachable because a least-privilege user could
+   * not read it would be false, and the natural response to that falsehood is
+   * to put the root credentials back.
+   */
+  const serverVersion = await db
+    .admin()
+    .command({ buildInfo: 1 })
+    .then((info) => String(info.version))
+    .catch(() => "(not permitted for this user — the app never asks for it)");
 
   console.log(`\n  connected in ${Date.now() - started}ms`);
   console.log(`  ping ok:        ${ping.ok === 1}`);
-  console.log(`  server version: ${build.version}`);
+  console.log(`  connected as:   ${usernameOf(uri)}`);
+  console.log(`  server version: ${serverVersion}`);
   console.log(`  database:       ${db.databaseName}`);
   console.log(
     `  collections:    ${
@@ -83,6 +119,13 @@ try {
       "\n  Hint: username/password rejected. Check the Atlas database user " +
         "(Database Access), not the Atlas account login. Special characters " +
         "in the password must be percent-encoded.",
+    );
+  } else if (/not authorized|unauthorized|requires authentication/i.test(message)) {
+    console.error(
+      "\n  Hint: the credentials were accepted but the user lacks a privilege. " +
+        "The app needs `readWrite` on `gamescentral` and nothing else, and " +
+        "`npm run db:sync-indexes` needs the same. If the refused action was " +
+        "on the `admin` database it was this script asking, not the app.",
     );
   } else if (/server selection|timed out/i.test(message)) {
     console.error(

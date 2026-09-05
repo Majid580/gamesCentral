@@ -1,5 +1,5 @@
 project: Games Central
-last_updated: "2026-09-04"
+last_updated: "2026-09-06"
 current_phase: "phase-5-payfast — BLOCKED ON PAYFAST ONLY. Phases 0-4, 6, 7, 8 complete. Everything that does not need a merchant account is built and exercised; fulfilment is written and drilled but CANNOT deliver (gate closed)."
 
 # ---------------------------------------------------------------------------
@@ -133,6 +133,61 @@ completed_features:
   - "Brand assets: npm run brand:check (scripts/brand-check.mts) — fails on a missing viewBox or a light/dark aspect-ratio mismatch (which would make the header resize on every theme toggle), warns on a baked-in background rect or an embedded raster. app/icon.svg added as the favicon via the Next file convention."
   - "Brand assets: public/brand/logo-light.svg and logo-dark.svg are PLACEHOLDERS pending the owner's real exports. Same names, same 640x400 box — dropping the real files over them needs no code change. brand:check reports while they are still placeholders."
   - "Rebrand: transactional email palette re-tinted to match (lib/services/email/templates.ts keeps hardcoded hex because email clients cannot resolve CSS variables); themeColor meta and ThemeToggle's THEME_COLOR map moved to the new canvases."
+  - |
+    PHASE 9 SECURITY REVIEW, 2026-09-06 — full-repo audit across money, auth
+    and fulfilment. Four fixes landed: the admin-login timing oracle (below),
+    the err_code_desc payment-status fallback (below), a claim re-assertion in
+    the fulfilment delivery loop, and db:check surviving a least-privilege
+    database user. npm audit is clean on prod and dev; no real secret appears
+    in any commit in the history; assertScalar covers every query filter built
+    from external input; the cron route's secret comparison, the admin search
+    regex escaping, the login-attempt TTL index and the security headers all
+    reviewed and left alone.
+  - |
+    RESOLVED 2026-09-06 — ADMIN ACCOUNT ENUMERATION VIA LOGIN TIMING. The
+    DUMMY_HASH in admin-auth.ts, whose entire job is to make a miss cost the
+    same bcrypt work as a hit, was 55 characters after the `$2b$12$` prefix
+    where a real digest has 53. bcryptjs could not parse it and returned false
+    at once: 0.2ms for an address with no admin against 277.8ms for one with.
+    The comment described the protection correctly and the value silently
+    withheld it, for the whole life of the file.
+    ⚠️ bcrypt.getRounds() returns 12 for the BROKEN value too — it reads the
+    cost prefix without validating the digest — so checking the cost alone does
+    not catch this. Length (must be 60) and elapsed time are what do.
+    tests/admin-auth-timing.test.mts now measures both; verified failing
+    against the old constant before the fix was kept.
+  - |
+    RESOLVED 2026-09-06 — err_code_desc COULD SETTLE AN UNPAID ORDER. The
+    payment status in fetchTransactionByBasketId fell back to `err_code_desc`,
+    which describes the outcome of the API REQUEST rather than of the payment,
+    while PAID_STATUSES accepts the bare word "success". An inquiry that
+    successfully reported an unpaid basket would have read as settled, and the
+    amount check cannot catch it because a declined attempt records the amount
+    that was ATTEMPTED — our own order total. Rule 2 inverted. The fallback is
+    removed; a response with no recognised status key is now
+    unreadable_response and the order stays unsettled. Do not re-add it.
+  - |
+    RESOLVED 2026-09-06 — the fulfilment delivery loop now re-asserts its claim.
+    NOT a double-delivery fix: that was already covered, and the reported race
+    does not exist — the sweeper leaves fulfilmentInFlight set, releases to
+    paid_pending_fulfillment rather than into delivery, and the claim path
+    refuses any order carrying the marker. The real gap ran the other way. A
+    run outliving STALLED_FULFILLING_MS gets swept mid-loop and would carry on
+    buying, then write `fulfilled` over the escalation an operator had just
+    been handed. The per-pack marker write is now conditional on still holding
+    `fulfilling`, at no extra cost.
+  - |
+    RESOLVED 2026-09-06 — npm run db:check survives a least-privilege user, so
+    the Atlas root/root rotation can actually be attempted. The APP needs only
+    readWrite on `gamescentral`: autoIndex is false and there is no admin
+    command, transaction or collection management anywhere in lib/ or app/.
+    But db-check called db.admin().command({buildInfo:1}) — the one call the
+    app never makes — and a readWrite-only user can be refused it, at which
+    point the script printed "Connection FAILED" and the natural response is to
+    put the root credentials back. buildInfo is now non-fatal, there is a
+    not-authorized hint naming the privilege actually required, and the check
+    prints WHICH USER it connected as.
+
 in_progress_features: []
 
 pending_features:
@@ -144,12 +199,70 @@ pending_features:
     The gate stays shut until PayFast is verified end-to-end AND the owner lifts
     it in person. This line is not authorisation.
   - "Brand: owner to paste the real logo exports over public/brand/logo-light.svg and logo-dark.svg (same names, transparent background, both on one 640x400-ratio canvas), then run npm run brand:check. No code change needed — the placeholders are wired identically."
-  - "Phase 9: code security hardening (claude-security)"
-  - "Phase 9.5: live pen test (strix-pentest)"
+  - "Phase 9.5: live pen test (strix-pentest) against our own deployment — needs Docker Desktop. The Phase 9 SOURCE audit is done (2026-09-06); this is the separate one that attacks a running site."
   - "Phase 10: performance pass"
   - "Phase 11: Hostinger production cutover"
 
 known_issues:
+  - |
+    ⛔ PAYFAST GO-LIVE MUST-FIX LIST — found by the Phase 9 audit 2026-09-06.
+    ALL of these are INERT TODAY: /api/payments/payfast/begin returns 503
+    before it touches the database while PayFast is unconfigured. Every one of
+    them becomes live the moment merchant credentials are set, so they are the
+    checklist for that day, alongside PAYFAST_FIELDS_CONFIRMED. Do not treat a
+    quiet endpoint as a safe one.
+
+    1. THE /begin ENDPOINT LEAKS THE SECOND FACTOR THAT GUARDS ORDER LOOKUP.
+       It needs an order ID and nothing else, and returns the hosted-checkout
+       `fields`, which include CUSTOMER_EMAIL_ADDRESS and CUSTOMER_MOBILE_NO
+       (hosted-checkout.ts). findOrderForGuest requires exactly that contact
+       detail as its second factor, so the IDOR guard on /api/orders/lookup —
+       carefully built, tested, and correct in itself — is bypassable through
+       the payment endpoint: order ID -> /begin -> contact -> full order view.
+       Order IDs travel over WhatsApp and sit in browser history. /begin needs
+       its own second factor before go-live.
+
+    2. THE MERCHANT BEARER TOKEN IS RETURNED TO ANY ANONYMOUS BROWSER. The
+       same `fields` carry TOKEN: input.accessToken, minted from
+       PAYFAST_MERCHANT_ID + PAYFAST_SECURED_KEY by client_credentials — and
+       the same credential is what fetchTransactionByBasketId sends to look up
+       ARBITRARY baskets. The comment at begin/route.ts asserting the token is
+       "short-lived and scoped to this one transaction" is an unverified claim
+       contradicted by our own use of it; it should not stand in for a check.
+       Establish the real scope and TTL with PayFast. If the form genuinely
+       needs a token, get a separate single-basket one and keep the merchant
+       credential server-side.
+
+    3. THE WEBHOOK IS UNAUTHENTICATED AND DELIBERATELY EXEMPT FROM RATE
+       LIMITING (rate-limit.ts), while /settle — same settlePayment path — is
+       capped at 20 per IP per 5 min. That is a complete bypass of the cap, and
+       each call costs a /token exchange plus a transaction lookup against the
+       gateway. The "no signature needed" rationale is sound for settlement
+       INTEGRITY and says nothing about availability: flooding it is a way to
+       get the merchant account throttled. Wants a global plus per-basket-id
+       ceiling, and a basket-id length check before the value is logged.
+
+    4. ANYONE WITH AN ORDER ID CAN PERMANENTLY BLOCK ITS PAYMENT. /begin moves
+       pending -> awaiting_payment, and beginPayment then refuses any order not
+       in `pending`. One unauthenticated call leaves the real customer with
+       "This order can't be paid for again. Please start a new one."
+
+    5. UNSET PAYFAST_MODE DEFAULTS TO SANDBOX with no NODE_ENV cross-check, and
+       that same value also short-circuits assertCheckoutFieldsReviewed(), so
+       one missing variable picks the test gateway AND disables the guard meant
+       to catch a bad gateway. SMILEONE_STUB gets throw-on-production-build
+       treatment; this did not.
+  - |
+    DEV-ONLY, LOW PRIORITY — lib/utils/dns-resolver.ts trusts SRV and TXT
+    answers more than the MongoDB driver does: SRV targets are used without
+    checking they share the parent domain of the queried host, and TXT contents
+    are folded wholesale into the options string rather than through the spec's
+    three-key allowlist. `tls=true` is forced last so TLS itself cannot be
+    downgraded, but a key like tlsAllowInvalidCertificates could still arrive.
+    Reachable only when the local resolver CANNOT do SRV — the Windows dev
+    machine case this exists for; production returns the URI untouched and none
+    of it runs. Worth a parent-domain check and a key allowlist whenever this
+    file is next opened, not worth a special trip.
   - |
     THE TEST SUITE COVERS PURE LOGIC ONLY — a green `npm test` is not a covered
     codebase. Nothing in tests/ touches MongoDB and nothing reaches the network.
@@ -577,7 +690,6 @@ next_steps:
 
   # --- remaining phases ---
   - "Testing: extend the suite to the DB-backed services once a disposable test database exists (a separate Atlas database, never gamescentral). The atomic conditional updates behind rules 3 and 8 are the ones worth having."
-  - "Phase 9: npm-run security review (claude-security) across money, auth and fulfilment"
   - "Phase 9.5: strix-pentest against our own deployment"
   - "Phase 10: performance pass"
   - "Phase 11: Hostinger cutover — rotate the Atlas root/root credentials to a least-privilege user FIRST (see known_issues)"

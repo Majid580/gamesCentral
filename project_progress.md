@@ -5,6 +5,112 @@ milestone gets an entry — see `CLAUDE.md` for why this is part of "done".
 
 ---
 
+## 2026-09-06 — Phase 9: the security review, and a defence that had never worked
+
+A full-repo audit across money, auth and fulfilment. Four fixes went in; most
+of what the review produced is a list of things that must be settled the day
+PayFast credentials arrive, recorded here so that day does not start from
+scratch.
+
+### The one that was live, and measured
+
+`verifyAdminCredentials` compares against a stand-in hash when the email has no
+admin, so a miss costs the same bcrypt work as a hit and the login form cannot
+be used to discover which addresses are real. The comment saying so was
+accurate. The constant it depended on was two characters too long — 55 after
+the `$2b$12$` prefix where a real digest has 53 — so bcryptjs could not parse
+it and returned `false` immediately:
+
+```
+existing admin (real hash)   277.8ms
+missing admin (DUMMY_HASH)     0.2ms
+```
+
+A factor of about 1,400, trivially measurable over a network, and an admin
+account enumeration oracle for as long as it stood. Fixed with a hash that
+parses, and `tests/admin-auth-timing.test.mts` now measures the property
+instead of trusting it. Note `bcrypt.getRounds()` reports 12 for the broken
+value as well — it reads the cost prefix without validating the digest — so a
+structural check of the cost alone would have sailed past this. Length and
+elapsed time are what catch it. Both new tests fail against the old constant;
+that was checked by putting it back.
+
+### Money path: one fix now, the rest gated behind PayFast
+
+`fetchTransactionByBasketId` resolved the payment status through a fallback
+chain ending at `err_code_desc` — a field that describes the outcome of the API
+*request*, not of the payment — while `PAID_STATUSES` accepts the bare word
+`"success"`. An inquiry that successfully reported an **unpaid** basket would
+therefore have read as settled, and the amount check cannot catch it, because a
+declined attempt records the amount that was attempted, which is our own order
+total. That inverts rule 2. The fallback is gone; a response with no recognised
+status key is now `unreadable_response` and the order stays unsettled.
+
+Three further money-path findings need PayFast's actual behaviour to resolve
+and are recorded in `known_issues` against `PAYFAST_FIELDS_CONFIRMED`. The
+sharpest is that `/api/payments/payfast/begin` returns the customer's email and
+phone to anyone who knows an order ID — which is exactly the second factor
+`findOrderForGuest` requires, so the careful IDOR guard on order lookup is
+bypassable through the payment endpoint. All of it is inert today: `/begin`
+returns 503 before it touches the database while PayFast is unconfigured.
+
+### Fulfilment: not the race that was reported
+
+A candidate finding claimed the delivery loop could run two concurrent
+deliveries of the same packs. It cannot: the sweeper leaves
+`fulfilmentInFlight` set when it releases a stalled order, releases it to
+`paid_pending_fulfillment` rather than back into delivery, and the claim path
+refuses any order carrying that marker. Rule 3 holds.
+
+The real gap was the opposite direction, and smaller. A run that outlives
+`STALLED_FULFILLING_MS` gets swept while still inside its loop, and would then
+carry on buying the remaining packs and finish by writing `fulfilled` — quietly
+erasing the escalation an operator had just been handed. The per-pack marker
+write is now conditional on still holding `fulfilling`, so the loop stops when
+the claim is gone. It rides on a write that was happening anyway.
+
+### Rotating the Atlas credentials, made safe to attempt
+
+`root/root` with Network Access at `0.0.0.0/0` remains the single most serious
+fact about this project, and it is owner action in the Atlas console. What was
+in the way is now gone: the application needs only `readWrite` on
+`gamescentral` — `autoIndex: false`, and no admin command, transaction or
+collection management anywhere under `lib/` or `app/` — but `npm run db:check`
+called `db.admin().command({ buildInfo: 1 })`, the one call the app never
+makes. A least-privilege user can be refused it, and the script would have
+printed **"Connection FAILED"**. The obvious response to that is to put the
+root credentials back. `buildInfo` is now non-fatal, there is a `not authorized`
+hint naming the privilege the app actually needs, and the check prints which
+user it connected as — after a rotation the question is not "did it connect"
+but "did it connect as the *new* user".
+
+### Checked and clean
+
+`npm audit` 0 vulnerabilities (prod and dev). Every blob in every commit swept
+for connection strings with embedded passwords, AWS keys, live Stripe keys,
+Slack tokens and private keys — the only hits are the `USER:PASS@host` example
+in the committed `.env.example`. `NEXT_PUBLIC_SITE_URL` is the only public var.
+`assertScalar` covers every query filter built from external input. The admin
+order search escapes regex metacharacters. The cron route hashes both sides to
+a fixed 32 bytes before `timingSafeEqual`, fails closed on an unset or short
+secret, is POST-only and 404s on refusal. `login_attempt` has its TTL index.
+Headers carry HSTS with preload, nosniff, `frame-ancestors 'none'`,
+`object-src 'none'` and `base-uri 'self'`.
+
+The CSP's `script-src 'unsafe-inline'` was examined and left, for the second
+time. The sentence in `next.config.ts` promising Phase 9 would adopt a nonce is
+what invited the re-litigation, so it has been replaced with the conclusion.
+
+**Verification:** `npm test` 89/89 · `npx tsc --noEmit` clean · `npx eslint`
+clean · `npm run build` green.
+
+**Not done:** the scan's own second wave — admin auth, guest lookup, data layer,
+env and headers — died on a rate limit before producing anything, and those
+areas were reviewed by hand instead. Phase 9.5 (`strix-pentest` against a
+running deployment) is untouched and still needs Docker Desktop.
+
+---
+
 ## 2026-09-04 — The two "never observed" animations, observed
 
 Two known issues had sat unresolved because a previous session could not see

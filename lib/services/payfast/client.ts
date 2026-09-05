@@ -208,11 +208,26 @@ export async function fetchTransactionByBasketId(
       : payload;
 
   return {
+    /*
+     * PAYMENT status only. `err_code_desc` used to sit at the end of this
+     * chain and must never return to it: in the Bank Alfalah / PayFast IPG
+     * vocabulary it describes the outcome of the API REQUEST, not the outcome
+     * of the payment, and its success wording is the bare word "Success" —
+     * which `PAID_STATUSES` accepts. An inquiry that succeeded in reporting an
+     * unpaid basket would therefore have read as a settled payment, and the
+     * amount check cannot catch it because a declined attempt records the
+     * amount that was attempted, which is our own order total.
+     *
+     * That inverts rule 2 (never deliver before payment is verified), so the
+     * fallback is gone. If none of the three status keys is present the
+     * transaction is `unreadable_response` and the order stays unsettled,
+     * which is the direction this has to fail in. Which key PayFast actually
+     * sends is part of what PAYFAST_FIELDS_CONFIRMED must establish.
+     */
     statusText:
       pick(record, "status") ??
       pick(record, "transaction_status") ??
-      pick(record, "TRANSACTION_STATUS") ??
-      pick(record, "err_code_desc"),
+      pick(record, "TRANSACTION_STATUS"),
     amountText:
       pick(record, "transaction_amount") ??
       pick(record, "amount") ??

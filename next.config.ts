@@ -7,9 +7,18 @@ const isDev = process.env.NODE_ENV === "development";
  *
  * `'unsafe-inline'` on script-src is required because Next.js emits inline
  * bootstrap/hydration scripts and we deliberately keep the marketing pages
- * statically rendered — a nonce would force every page dynamic. Phase 9
- * (security hardening) revisits this to apply nonce + 'strict-dynamic' on the
- * dynamic routes only. `'unsafe-eval'` is dev-only (React Refresh needs it).
+ * statically rendered — a nonce would force every page dynamic.
+ *
+ * Phase 9 (2026-09-06) looked at this and left it, which is the second time
+ * the same conclusion has been reached; the sentence that used to sit here
+ * promising Phase 9 would adopt a nonce is what invited the re-litigation, so
+ * it is gone. The reasoning, recorded in project_state.yaml on 2026-08-18: the
+ * only `dangerouslySetInnerHTML` in the codebase is the pre-paint theme script
+ * and its content is a compile-time constant, React escapes everything else,
+ * so there is no injection sink for a nonce to defend — a real cost against a
+ * hypothetical benefit. Re-open only if a genuine HTML sink is introduced.
+ *
+ * `'unsafe-eval'` is dev-only (React Refresh needs it).
  *
  * `form-action` MUST list PayFast, and this is not a nicety. The handoff is a
  * real cross-origin form POST built in `submitToGateway()`, so `'self'` alone

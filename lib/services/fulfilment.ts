@@ -383,10 +383,42 @@ export async function fulfilOrder(
      * parallel: each call is an independent purchase, and a failure must stop
      * the rest instead of racing three more out the door.
      */
-    await OrderModel.updateOne(
-      { _id: claimed._id },
+    const stillOurs = await OrderModel.updateOne(
+      { _id: claimed._id, status: "fulfilling" },
       { $set: { fulfilmentInFlight: { supplierProductId, startedAt: new Date() } } },
     );
+
+    /*
+     * Re-asserting the claim, not guarding against a double delivery — that is
+     * already covered, and by something stronger: the sweeper leaves
+     * `fulfilmentInFlight` in place when it releases a stalled order, and the
+     * claim path above refuses any order carrying one, so a second worker
+     * cannot start buying behind this one.
+     *
+     * What this catches is the opposite direction. A run that outlives
+     * STALLED_FULFILLING_MS gets released to `paid_pending_fulfillment` while
+     * it is still inside this loop; without this check it would carry on
+     * buying the remaining packs and finish by writing `fulfilled`, quietly
+     * erasing the escalation an operator had just been asked to look at. The
+     * condition costs nothing — it rides on a write that was happening anyway.
+     */
+    if (stillOurs.matchedCount === 0) {
+      console.error("[fulfilment] lost the claim mid-delivery — stopping", {
+        orderId,
+        deliveredThisRun: delivered,
+        nextPack: supplierProductId,
+      });
+
+      return {
+        ok: false,
+        state: "not_claimable",
+        deliveredThisRun: delivered,
+        detail:
+          "This order stopped being ours to deliver part-way through, most likely " +
+          "released to the admin queue as stalled. Stopped rather than continuing " +
+          "to buy against a claim we no longer hold.",
+      };
+    }
 
     let result: { supplierOrderId: string; stubbed: boolean };
     try {
